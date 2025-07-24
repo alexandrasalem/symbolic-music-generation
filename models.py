@@ -51,7 +51,6 @@ class ChordEncoder(nn.Module):
     def forward(self, input_ids, attention_mask=None):
         x = self.token_embedding(input_ids)  # [batch_size, seq_len, d_model]
         x = self.pos_encoder(x)  # add positional encoding
-        #x = x.permute(1, 0, 2)  # [seq_len, batch_size, d_model]
 
         if attention_mask is not None:
             # Convert attention_mask (1=keep, 0=mask) to Bool mask where True=mask
@@ -191,7 +190,6 @@ class Chord2MidiTransformer(nn.Module):
     ):
         with torch.no_grad():
             encoder_out = self.encoder(input_ids, attention_mask)
-            #memory = encoder_out.last_hidden_state # (B, T, d_enc)
 
         memory = self.memory_proj(encoder_out) # (B, T, d_dec)
 

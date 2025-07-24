@@ -191,6 +191,17 @@ def main():
         log_msg = f"Epoch {epoch} — Loss: {epoch_loss / len(train_dataloader) * batch_size:.4f}"
         print(log_msg)
 
+        if epoch % save_every == 0 and epoch != 0:
+            checkpoint_path = f"train_checkpoints/chord2midi_epoch_{epoch}.pt"
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.module.state_dict() if isinstance(model,
+                                                                            nn.DataParallel) else model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': loss.item(),
+            }, checkpoint_path)
+            print(f"Saved checkpoint: {checkpoint_path}")
+
         # avg_loss = epoch_loss / len(train_dataloader)
         # logging.info(f"Epoch {epoch} — Loss: {avg_loss:.4f}")
         # print(f"Epoch {epoch} — Loss: {avg_loss:.4f}")
