@@ -38,7 +38,7 @@ def main():
         nhead=8
     ).to(device)
 
-    epoch_to_load = 350
+    epoch_to_load = 400
     checkpoint = torch.load(f"train_checkpoints/remidecoder_epoch_{epoch_to_load}.pt", map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
