@@ -39,13 +39,14 @@ def main():
     ).to(device)
 
     epoch_to_load = 400
-    checkpoint = torch.load(f"train_checkpoints/remidecoder_epoch_{epoch_to_load}.pt", map_location=device)
+    bass_or_melody = "bass"
+    checkpoint = torch.load(f"train_checkpoints/{bass_or_melody}remidecoder_epoch_{epoch_to_load}.pt", map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
     print("Model loaded from checkpoint!")
 
-    os.makedirs(f"token_distribution/epoch_{epoch_to_load}", exist_ok=True)
+    #os.makedirs(f"token_distribution/epoch_{epoch_to_load}", exist_ok=True)
     os.makedirs("decoder_samples", exist_ok=True)
     os.makedirs(f"decoder_samples/generated_midis_{epoch_to_load}", exist_ok=True)
 
