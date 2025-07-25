@@ -40,7 +40,7 @@ def main():
 
     epoch_to_load = 400
     bass_or_melody = "bass"
-    checkpoint = torch.load(f"train_checkpoints/{bass_or_melody}remidecoder_epoch_{epoch_to_load}.pt", map_location=device)
+    checkpoint = torch.load(f"train_checkpoints/{bass_or_melody}/remidecoder_epoch_{epoch_to_load}.pt", map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
@@ -51,7 +51,7 @@ def main():
     os.makedirs(f"decoder_samples/generated_midis_{epoch_to_load}", exist_ok=True)
 
     print("START GENERATING..")
-    for i in tqdm(range(30)):
+    for i in tqdm(range(15)):
         top_p_ids = model.generate(
             bos_id=bos_id,
             eos_id=eos_id,
