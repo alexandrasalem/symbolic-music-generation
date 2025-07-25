@@ -213,12 +213,13 @@ class Chord2MidiTransformer(nn.Module):
         top_p=0.9,
         device=None,
     ):
+        print("in generate")
         device = device or input_ids.device
 
         with torch.no_grad():
             encoder_out = self.encoder(input_ids, attention_mask)
-            memory = encoder_out.last_hidden_state[:,0,:].unsqueeze(1) # [CLS] token embedding
-            memory = self.memory_proj(memory)
+            #memory = encoder_out.last_hidden_state[:,0,:].unsqueeze(1) # [CLS] token embedding
+            memory = self.memory_proj(encoder_out)
 
         generated_ids = self.decoder.generate(
             bos_id=bos_id,
