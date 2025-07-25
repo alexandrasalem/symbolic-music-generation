@@ -48,6 +48,7 @@ def main():
 
     epoch_to_load = 400
     bass_or_melody = "bass"
+    max_length = 128
     checkpoint = torch.load(f"train_checkpoints/{bass_or_melody}/chord2midi_epoch_{epoch_to_load}.pt", map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
@@ -65,18 +66,30 @@ def main():
 
     print("START GENERATING..")
     for idx, row in test_data.iterrows():
-        chord_text = row["chord"]
-        inputs = chord_tokenizer.encode(chord_text)
-        input_ids = torch.tensor(inputs.ids).to(device)
-        attention_mask = torch.tensor(inputs.attention_mask).to(device)
+        tokenized = chord_tokenizer.encode(
+            test_data.iloc[idx]['chord'],
+        )
+        input_ids, attn_mask = tokenized.ids, tokenized.attention_mask
+
+        chord_pad_token = chord_tokenizer.token_to_id('[PAD]')
+        if len(input_ids) < max_length:
+            pad_len = max_length - len(input_ids)
+            input_ids = input_ids + ([chord_pad_token] * pad_len)
+            attn_mask = attn_mask + ([chord_pad_token] * pad_len)
+        else:
+            input_ids = input_ids[:max_length]
+            attn_mask = attn_mask[:max_length]
+
+        input_ids = torch.tensor(input_ids, dtype=torch.long).to(device)
+        attn_mask = torch.tensor(attn_mask, dtype=torch.long).to(device)
 
         # generate samples
         generated_ids = model.generate(
             input_ids=input_ids,
-            attention_mask=attention_mask,
+            attention_mask=attn_mask,
             bos_id=bos_id,
             eos_id=eos_id,
-            max_len=256,
+            max_len=max_length,
             decoding_strategy="top_p",
             top_p=0.9,
             device=device
