@@ -82,6 +82,7 @@ def main():
 
         input_ids = torch.tensor(input_ids, dtype=torch.long).to(device)
         attn_mask = torch.tensor(attn_mask, dtype=torch.long).to(device)
+        print(input_ids.shape)
 
         # generate samples
         generated_ids = model.generate(
