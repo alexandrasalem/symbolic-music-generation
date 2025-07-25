@@ -66,8 +66,8 @@ def main():
     for idx, row in test_data.iterrows():
         chord_text = row["chord"]
         inputs = chord_tokenizer.encode(chord_text)
-        input_ids = inputs.ids.to(device)
-        attention_mask = inputs.attention_mask.to(device)
+        input_ids = inputs.ids#.to(device)
+        attention_mask = inputs.attention_mask#.to(device)
 
         # generate samples
         generated_ids = model.generate(
