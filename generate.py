@@ -51,6 +51,7 @@ def main():
     checkpoint = torch.load(f"train_checkpoints/{bass_or_melody}/chord2midi_epoch_{epoch_to_load}.pt", map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
+    model.to(device)
 
     print("Model loaded from checkpoint!")
 
