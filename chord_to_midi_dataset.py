@@ -36,6 +36,7 @@ class ChordMidiDataset(Dataset):
         midi_file_path = Path(self.midi_paths, f"{midi_id}.mid")
         midi_tokenized = self.midi_tokenizer(midi_file_path)
         midi_ids = midi_tokenized[0].ids  # List[List[int]] (T, F)
+        midi_ids = [1] + midi_ids + [2] #salem trying this
 
         # Pad or truncate
         midi_tensor = torch.tensor(midi_ids, dtype=torch.long)
@@ -46,6 +47,6 @@ class ChordMidiDataset(Dataset):
             pad_tensor = torch.full((pad_len,), self.midi_tokenizer.pad_token_id, dtype=torch.long)
             midi_tensor = torch.cat([midi_tensor, pad_tensor])
         else:
-            midi_tensor = midi_tensor[:self.midi_max_length]
+            midi_tensor = torch.cat([midi_tensor[:self.midi_max_length-1], torch.tensor(2)])
 
         return torch.tensor(input_ids, dtype=torch.long), torch.tensor(attn_mask, dtype=torch.long), midi_tensor  # shapes: (L,), (L,), (T, F)

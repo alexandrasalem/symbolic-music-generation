@@ -213,7 +213,6 @@ class Chord2MidiTransformer(nn.Module):
         top_p=0.9,
         device=None,
     ):
-        print("in generate")
         device = device or input_ids.device
 
         with torch.no_grad():
