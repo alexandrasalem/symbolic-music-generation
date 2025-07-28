@@ -102,7 +102,7 @@ def main():
 
     train_df = pd.read_csv("test_chords_edited.csv")
     midis_we_have = list(Path('simplified_melody_files_c_midi').resolve().glob('*.mid'))
-    midis_we_have = [item.name[:-28] for item in midis_we_have]
+    midis_we_have = [item.name[:-30] for item in midis_we_have] #[item.name[:-28] for item in midis_we_have]
     train_df = train_df[train_df["name"].isin(midis_we_have)]
     midis_path = "simplified_melody_files_c_midi"
     train_dataset = ChordMidiDataset(
