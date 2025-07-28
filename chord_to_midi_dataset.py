@@ -32,7 +32,7 @@ class ChordMidiDataset(Dataset):
             attn_mask = attn_mask[:self.chord_max_length]
 
         midi_id = self.df.iloc[idx]['name']
-        midi_id = f'{midi_id}_score_simplified_bass_c'
+        midi_id = f'{midi_id}_score_simplified_melody_c' #f'{midi_id}_score_simplified_bass_c'
         midi_file_path = Path(self.midi_paths, f"{midi_id}.mid")
         midi_tokenized = self.midi_tokenizer(midi_file_path)
         midi_ids = midi_tokenized[0].ids  # List[List[int]] (T, F)
