@@ -47,6 +47,7 @@ class ChordMidiDataset(Dataset):
             pad_tensor = torch.full((pad_len,), self.midi_tokenizer.pad_token_id, dtype=torch.long)
             midi_tensor = torch.cat([midi_tensor, pad_tensor])
         else:
-            midi_tensor = torch.cat([midi_tensor[:self.midi_max_length-1], torch.tensor(2)])
+            midi_tensor = midi_tensor[:self.midi_max_length]
+            midi_tensor[-1] = 2
 
         return torch.tensor(input_ids, dtype=torch.long), torch.tensor(attn_mask, dtype=torch.long), midi_tensor  # shapes: (L,), (L,), (T, F)
