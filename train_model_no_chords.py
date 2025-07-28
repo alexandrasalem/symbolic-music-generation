@@ -79,7 +79,7 @@ def main():
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    os.makedirs("train_checkpoints", exist_ok=True)
+    os.makedirs("melody_train_checkpoints", exist_ok=True)
 
     TOKENIZER_PARAMS = {
         "pitch_range": (21, 109),
@@ -97,8 +97,8 @@ def main():
     config = TokenizerConfig(**TOKENIZER_PARAMS)
     tokenizer = REMI(config)
 
-    midi_paths = list(Path("simplified_bass_files_c_midi").resolve().glob("*.mid"))
-    val_midi_paths = list(Path("simplified_bass_files_c_midi").resolve().glob("*.mid"))
+    midi_paths = list(Path("simplified_melody_files_c_midi").resolve().glob("*.mid"))
+    val_midi_paths = list(Path("simplified_melody_files_c_midi").resolve().glob("*.mid"))
 
     dataset = DatasetMIDI(
         files_paths=midi_paths,
@@ -203,7 +203,7 @@ def main():
         #                      max_len=512)  # generate samples to see token distribution
         #
         if epoch % save_every == 0 and epoch != 0:
-            checkpoint_path = f"train_checkpoints/remidecoder_epoch_{epoch}.pt"
+            checkpoint_path = f"melody_train_checkpoints/remidecoder_epoch_{epoch}.pt"
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.module.state_dict() if isinstance(model,
