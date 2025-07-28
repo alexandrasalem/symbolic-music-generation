@@ -70,6 +70,7 @@ def generate_samples(model, epoch, bos_id, eos_id, device, max_len=512, ):
 
     model.train()
 
+bass_or_melody = "melody"
 
 def main():
     logging.basicConfig(
@@ -79,7 +80,8 @@ def main():
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    os.makedirs("train_checkpoints", exist_ok=True)
+    checkpoints_loc = f'{bass_or_melody}_train_checkpoints'
+    os.makedirs(checkpoints_loc, exist_ok=True)
 
     TOKENIZER_PARAMS = {
         "pitch_range": (21, 109),
@@ -99,10 +101,10 @@ def main():
     chord_tokenizer = Tokenizer.from_file("test_chord_tokenizer.json")
 
     train_df = pd.read_csv("test_chords_edited.csv")
-    midis_we_have = list(Path('simplified_bass_files_c_midi').resolve().glob('*.mid'))
+    midis_we_have = list(Path('simplified_melody_files_c_midi').resolve().glob('*.mid'))
     midis_we_have = [item.name[:-28] for item in midis_we_have]
     train_df = train_df[train_df["name"].isin(midis_we_have)]
-    midis_path = "simplified_bass_files_c_midi"
+    midis_path = "simplified_melody_files_c_midi"
     train_dataset = ChordMidiDataset(
         train_df,
         midis_path=midis_path,
@@ -192,7 +194,7 @@ def main():
         print(log_msg)
 
         if epoch % save_every == 0 and epoch != 0:
-            checkpoint_path = f"train_checkpoints/chord2midi_epoch_{epoch}.pt"
+            checkpoint_path = f"{checkpoints_loc}/chord2midi_epoch_{epoch}.pt"
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.module.state_dict() if isinstance(model,
