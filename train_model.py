@@ -74,13 +74,13 @@ bass_or_melody = "bass"
 
 def main():
     logging.basicConfig(
-        filename='remidecoder_train_log.log',
+        filename=f'chord2{bass_or_melody}_train_log.log',
         level=logging.INFO,
         format='%(asctime)s — %(levelname)s — %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    checkpoints_loc = f'{bass_or_melody}_train_checkpoints'
+    checkpoints_loc = f'chord2{bass_or_melody}_train_checkpoints'
     os.makedirs(checkpoints_loc, exist_ok=True)
 
     TOKENIZER_PARAMS = {
@@ -101,10 +101,10 @@ def main():
     chord_tokenizer = Tokenizer.from_file("test_chord_tokenizer.json")
 
     train_df = pd.read_csv("test_chords_edited.csv")
-    midis_we_have = list(Path('new_simplified_bass_files_c_midi').resolve().glob('*.mid'))
+    midis_we_have = list(Path(f'new_simplified_{bass_or_melody}_files_c_midi').resolve().glob('*.mid'))
     midis_we_have = [item.name[:-22] for item in midis_we_have] #[item.name[:-28] for item in midis_we_have]
     train_df = train_df[train_df["long_name"].isin(midis_we_have)]
-    midis_path = "new_simplified_bass_files_c_midi"
+    midis_path = f"new_simplified_{bass_or_melody}_files_c_midi"
     train_dataset = ChordMidiDataset(
         train_df,
         midis_path=midis_path,
@@ -158,7 +158,7 @@ def main():
     # print(f"Loaded checkpoints! starting training from EPOCH: {start_epoch}: ")
 
     start_epoch = 0
-    num_epochs = 401
+    num_epochs = 1#401
     save_every = 50
     val_every = 50
     log_interval = 1000
@@ -195,7 +195,7 @@ def main():
         print(log_msg)
 
         if epoch % save_every == 0 and epoch != 0:
-            checkpoint_path = f"{checkpoints_loc}/chord2midi_epoch_{epoch}.pt"
+            checkpoint_path = f"{checkpoints_loc}/chord2{bass_or_melody}_epoch_{epoch}.pt"
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.module.state_dict() if isinstance(model,

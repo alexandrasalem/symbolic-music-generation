@@ -70,16 +70,17 @@ def generate_samples(model, epoch, bos_id, eos_id, device, max_len=512, ):
 
     model.train()
 
+bass_or_melody = 'bass'
 
 def main():
     logging.basicConfig(
-        filename='remidecoder_train_log.log',
+        filename=f'nothingprior2{bass_or_melody}_train_log.log',
         level=logging.INFO,
         format='%(asctime)s — %(levelname)s — %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-
-    os.makedirs("melody_train_checkpoints", exist_ok=True)
+    checkpoints_loc = f'nothingprior2{bass_or_melody}_train_checkpoints'
+    os.makedirs(checkpoints_loc, exist_ok=True)
 
     TOKENIZER_PARAMS = {
         "pitch_range": (21, 109),
@@ -97,32 +98,31 @@ def main():
     config = TokenizerConfig(**TOKENIZER_PARAMS)
     tokenizer = REMI(config)
 
-    midi_paths = list(Path("simplified_melody_files_c_midi").resolve().glob("*.mid"))
-    val_midi_paths = list(Path("simplified_melody_files_c_midi").resolve().glob("*.mid"))
+    midi_paths = list(Path(f"simplified_melody_files_c_midi").resolve().glob("*.mid"))
+    #val_midi_paths = list(Path(f"simplified_melody_files_c_midi").resolve().glob("*.mid"))
 
     dataset = DatasetMIDI(
         files_paths=midi_paths,
         tokenizer=tokenizer,
-        max_seq_len=256,
+        max_seq_len=128,
         bos_token_id=tokenizer['BOS_None'],
         eos_token_id=tokenizer["EOS_None"],
     )
 
-    val_dataset = DatasetMIDI(
-        files_paths=val_midi_paths,
-        tokenizer=tokenizer,
-        max_seq_len=256,
-        bos_token_id=tokenizer['BOS_None'],
-        eos_token_id=tokenizer["EOS_None"],
-    )
+    # val_dataset = DatasetMIDI(
+    #     files_paths=val_midi_paths,
+    #     tokenizer=tokenizer,
+    #     max_seq_len=256,
+    #     bos_token_id=tokenizer['BOS_None'],
+    #     eos_token_id=tokenizer["EOS_None"],
+    # )
 
-    batch_size = 128
+    batch_size = 8
     collator = DataCollator(tokenizer.pad_token_id)
     data_loader = DataLoader(dataset=dataset, collate_fn=collator, batch_size=batch_size)
-    val_dataloader = DataLoader(dataset=val_dataset, collate_fn=collator, batch_size=batch_size)
+    #val_dataloader = DataLoader(dataset=val_dataset, collate_fn=collator, batch_size=batch_size)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
     model = RemiDecoder(
         len(tokenizer.vocab),
@@ -155,7 +155,7 @@ def main():
     # print(f"Loaded checkpoints! starting training from EPOCH: {start_epoch}: ")
 
     start_epoch = 0
-    num_epochs = 401
+    num_epochs = 1#401
     save_every = 50
     val_every = 50
     log_interval = 1000
@@ -202,8 +202,8 @@ def main():
         #     generate_samples(model, epoch, bos_id=1, eos_id=2, device=device,
         #                      max_len=512)  # generate samples to see token distribution
         #
-        if epoch % save_every == 0 and epoch != 0:
-            checkpoint_path = f"melody_train_checkpoints/remidecoder_epoch_{epoch}.pt"
+        if epoch % save_every == 0:# and epoch != 0:
+            checkpoint_path = f"nothingprior2{bass_or_melody}_train_checkpoints/nothingprior2{bass_or_melody}_epoch_{epoch}.pt"
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.module.state_dict() if isinstance(model,
