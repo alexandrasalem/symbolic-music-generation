@@ -4,12 +4,13 @@ import torch
 
 
 class ChordMidiDataset(Dataset):
-    def __init__(self, dataframe, midis_path, midi_tokenizer, chord_tokenizer, max_length=512):
+    def __init__(self, dataframe, midis_path, midi_tokenizer, chord_tokenizer, bass_or_melody, max_length=512):
         self.df = dataframe
         self.midi_tokenizer = midi_tokenizer
         self.chord_tokenizer = chord_tokenizer
         self.chord_max_length = max_length
         self.midi_paths = midis_path
+        self.bass_or_melody = bass_or_melody
         self.midi_max_length = max_length
         #self.pad_token = tuple(midi_tokenizer.pad_token_id for _ in range(len(midi_tokenizer.vocab)))
 
@@ -31,8 +32,8 @@ class ChordMidiDataset(Dataset):
             input_ids = input_ids[:self.chord_max_length]
             attn_mask = attn_mask[:self.chord_max_length]
 
-        midi_id = self.df.iloc[idx]['name']
-        midi_id = f'{midi_id}_score_simplified_melody_c' #f'{midi_id}_score_simplified_bass_c'
+        midi_id = self.df.iloc[idx]['long_name']
+        midi_id = f'{midi_id}_simplified_{self.bass_or_melody}_c' #f'{midi_id}_score_simplified_bass_c'
         midi_file_path = Path(self.midi_paths, f"{midi_id}.mid")
         midi_tokenized = self.midi_tokenizer(midi_file_path)
         midi_ids = midi_tokenized[0].ids  # List[List[int]] (T, F)
