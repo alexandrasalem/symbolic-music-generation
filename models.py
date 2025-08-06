@@ -43,7 +43,7 @@ class ChordEncoder(nn.Module):
         )
         self.encoder = nn.TransformerEncoder(
             encoder_layer,
-            num_layers=num_layers
+            num_layers=num_layers,
         )
 
         #self.out_proj = nn.Linear(d_model, vocab_size)
@@ -52,6 +52,8 @@ class ChordEncoder(nn.Module):
         x = self.token_embedding(input_ids)  # [batch_size, seq_len, d_model]
         x = self.pos_encoder(x)  # add positional encoding
 
+        B, T = input_ids.size()  # input: (B, T)
+
         if attention_mask is not None:
             # Convert attention_mask (1=keep, 0=mask) to Bool mask where True=mask
             attn_mask = attention_mask == 0  # [batch_size, seq_len]
@@ -59,7 +61,9 @@ class ChordEncoder(nn.Module):
         else:
             attn_mask = None
 
-        output = self.encoder(x, src_key_padding_mask=attn_mask)  # [seq_len, batch_size, d_model]
+        input_mask = Transformer.generate_square_subsequent_mask(T).to(input_ids.device)
+
+        output = self.encoder(x, mask = input_mask, src_key_padding_mask=attn_mask, is_causal=True)  # [seq_len, batch_size, d_model]
         #output = self.out_proj(output)
         return output#.permute(1, 0, 2)
 

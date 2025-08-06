@@ -158,7 +158,7 @@ def main():
     # print(f"Loaded checkpoints! starting training from EPOCH: {start_epoch}: ")
 
     start_epoch = 0
-    num_epochs = 401
+    num_epochs = 1#401
     save_every = 50
     val_every = 50
     log_interval = 1000
@@ -194,7 +194,7 @@ def main():
         log_msg = f"Epoch {epoch} — Loss: {epoch_loss / len(train_dataloader) * batch_size:.4f}"
         print(log_msg)
 
-        if epoch % save_every == 0 and epoch != 0:
+        if epoch % save_every == 0:# and epoch != 0:
             checkpoint_path = f"{checkpoints_loc}/chord2{bass_or_melody}_epoch_{epoch}.pt"
             torch.save({
                 'epoch': epoch,
