@@ -11,6 +11,8 @@ In `train_model.py`, the model takes the chords as input, and generates the MIDI
 
 In `train_model_no_chords.py`, the model just generates MIDI.
 
+In all of these models, we train `bass` and `melody` versions as two separate models.
+
 #### To-Do
 These two tasks will require making a new model class in `models.py`.
 - Add a model that generates the bass and then afterwards the melody (instead of two separate models).
