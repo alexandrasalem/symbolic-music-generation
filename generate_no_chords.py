@@ -1,14 +1,12 @@
-import argparse
-
 from miditok import REMI, TokenizerConfig
 from models import RemiDecoder
 import torch
-import torch.nn as nn
-import pickle
-from miditok import TokSequence
 import os
 from tqdm import tqdm
-from utils import convert_to_midi_files, compute_token_type_distribution
+from utils import convert_to_midi_files
+
+epoch_to_load = 400
+bass_or_melody = "bass"
 
 def main():
     TOKENIZER_PARAMS = {
@@ -38,17 +36,15 @@ def main():
         nhead=8
     ).to(device)
 
-    epoch_to_load = 400
-    bass_or_melody = "bass"
-    checkpoint = torch.load(f"train_checkpoints/{bass_or_melody}/remidecoder_epoch_{epoch_to_load}.pt", map_location=device)
+    checkpoint = torch.load(f"nothingprior2{bass_or_melody}_train_checkpoints/nothingprior2{bass_or_melody}_epoch_{epoch_to_load}.pt", map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
     print("Model loaded from checkpoint!")
 
     #os.makedirs(f"token_distribution/epoch_{epoch_to_load}", exist_ok=True)
-    os.makedirs("decoder_samples", exist_ok=True)
-    os.makedirs(f"decoder_samples/generated_midis_{epoch_to_load}", exist_ok=True)
+    os.makedirs(f"nothingprior2{bass_or_melody}_samples", exist_ok=True)
+    os.makedirs(f"nothingprior2{bass_or_melody}_{bass_or_melody}/generated_midis_{epoch_to_load}", exist_ok=True)
 
     print("START GENERATING..")
     for i in tqdm(range(15)):
@@ -61,18 +57,13 @@ def main():
             device=device
         )
 
-        path = f"decoder_samples/generated_midis_{epoch_to_load}/track_{i+1}.mid"
+        path = f"nothingprior2{bass_or_melody}_{bass_or_melody}/generated_midis_{epoch_to_load}/track_{i+1}.mid"
         convert_to_midi_files(
             top_p_ids,
             tokenizer,
             i+1,
             path
         )
-
-        # token_distribution = compute_token_type_distribution(top_p_ids)
-        #
-        # with open(f"token_distribution/epoch_{epoch_to_load}/track_{i+1}.pkl", 'wb') as f:
-        #     pickle.dump(token_distribution, f)
 
 if __name__ == "__main__":
     main()

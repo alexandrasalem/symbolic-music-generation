@@ -1,13 +1,13 @@
-import argparse
-
 from miditok import REMI, TokenizerConfig
 from models import RemiDecoder, ChordEncoder, Chord2MidiTransformer
 import torch
 import os
-from tqdm import tqdm
-from utils import convert_to_midi_files, compute_token_type_distribution
+from utils import convert_to_midi_files
 from tokenizers import Tokenizer
 import pandas as pd
+
+epoch_to_load = 400
+bass_or_melody = "bass"
 
 def main():
     TOKENIZER_PARAMS = {
@@ -46,10 +46,8 @@ def main():
     )
     model = Chord2MidiTransformer(encoder, decoder)
 
-    epoch_to_load = 400
-    bass_or_melody = "bass"
     max_length = 128
-    checkpoint = torch.load(f"train_checkpoints/{bass_or_melody}/chord2midi_epoch_{epoch_to_load}.pt", map_location=device)
+    checkpoint = torch.load(f"chord2{bass_or_melody}_train_checkpoints/chord2{bass_or_melody}_epoch_{epoch_to_load}.pt", map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     model.to(device)
@@ -58,11 +56,12 @@ def main():
 
     test_data = pd.read_csv("test_chords_edited.csv")
     test_data = test_data[:15]
+    print(test_data)
     print("Test data (chord progressions) loaded!")
 
     #os.makedirs(f"token_distribution/epoch_{epoch_to_load}", exist_ok=True)
-    os.makedirs("chord2midi_samples", exist_ok=True)
-    os.makedirs(f"chord2midi_samples/{bass_or_melody}/generated_midis_{epoch_to_load}", exist_ok=True)
+    os.makedirs(f"chord2{bass_or_melody}_samples", exist_ok=True)
+    os.makedirs(f"chord2{bass_or_melody}_samples/generated_midis_{epoch_to_load}", exist_ok=True)
 
     print("START GENERATING..")
     for idx, row in test_data.iterrows():
@@ -82,7 +81,8 @@ def main():
 
         input_ids = torch.tensor(input_ids, dtype=torch.long).to(device)
         attn_mask = torch.tensor(attn_mask, dtype=torch.long).to(device)
-        print(input_ids.shape)
+        input_ids = input_ids.unsqueeze(0)
+        attn_mask = attn_mask.unsqueeze(0)
 
         # generate samples
         generated_ids = model.generate(
@@ -95,7 +95,8 @@ def main():
             top_p=0.9,
             device=device
         )
-        path = f"chord2midi_samples/{bass_or_melody}/generated_midis_{epoch_to_load}/track_{idx+1}.mid"
+        name = row['long_name']
+        path = f"chord2{bass_or_melody}_samples/generated_midis_{epoch_to_load}/{name}_generated.mid"
         convert_to_midi_files(
             generated_ids,
             midi_tokenizer,
