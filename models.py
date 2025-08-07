@@ -46,8 +46,6 @@ class ChordEncoder(nn.Module):
             num_layers=num_layers,
         )
 
-        #self.out_proj = nn.Linear(d_model, vocab_size)
-
     def forward(self, input_ids, attention_mask=None):
         x = self.token_embedding(input_ids)  # [batch_size, seq_len, d_model]
         x = self.pos_encoder(x)  # add positional encoding
@@ -61,11 +59,12 @@ class ChordEncoder(nn.Module):
         else:
             attn_mask = None
 
+        # Added this causal mask to input
         input_mask = Transformer.generate_square_subsequent_mask(T).to(input_ids.device)
 
+        # Added mask and is_causal to the encoder
         output = self.encoder(x, mask = input_mask, src_key_padding_mask=attn_mask, is_causal=True)  # [seq_len, batch_size, d_model]
-        #output = self.out_proj(output)
-        return output#.permute(1, 0, 2)
+        return output
 
 class RemiDecoder(nn.Module):
     def __init__(
@@ -221,7 +220,6 @@ class Chord2MidiTransformer(nn.Module):
 
         with torch.no_grad():
             encoder_out = self.encoder(input_ids, attention_mask)
-            #memory = encoder_out.last_hidden_state[:,0,:].unsqueeze(1) # [CLS] token embedding
             memory = self.memory_proj(encoder_out)
 
         generated_ids = self.decoder.generate(
