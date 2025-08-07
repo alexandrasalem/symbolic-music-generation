@@ -155,7 +155,7 @@ def main():
     # print(f"Loaded checkpoints! starting training from EPOCH: {start_epoch}: ")
 
     start_epoch = 0
-    num_epochs = 401
+    num_epochs = 1#401
     save_every = 50
     val_every = 50
     log_interval = 1000
