@@ -70,7 +70,7 @@ def generate_samples(model, epoch, bos_id, eos_id, device, max_len=512, ):
 
     model.train()
 
-bass_or_melody = "bass"
+bass_or_melody = "melody"
 
 def main():
     logging.basicConfig(
