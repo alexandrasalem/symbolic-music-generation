@@ -98,9 +98,9 @@ def main():
     }
     config = TokenizerConfig(**TOKENIZER_PARAMS)
     midi_tokenizer = REMI(config)
-    chord_tokenizer = Tokenizer.from_file("test_chord_tokenizer.json")
+    chord_tokenizer = Tokenizer.from_file("chord_tokenizer.json")
 
-    train_df = pd.read_csv("test_chords_edited.csv")
+    train_df = pd.read_csv("train_chords_edited.csv")
     midis_we_have = list(Path(f'new_simplified_{bass_or_melody}_files_c_midi').resolve().glob('*.mid'))
     midis_we_have = [item.name[:-22] for item in midis_we_have] #[item.name[:-28] for item in midis_we_have]
     train_df = train_df[train_df["long_name"].isin(midis_we_have)]

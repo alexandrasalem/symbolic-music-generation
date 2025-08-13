@@ -34,7 +34,7 @@ def update_chords(chords_string, keep_na):
     new_chords_joined = new_chords_joined + "\n"
     return new_chords_joined
 
-with open('test_chords.txt') as f:
+with open('chords.txt') as f:
     lines = f.readlines()
 
 lines = [line.replace("\n", "") for line in lines]
@@ -43,11 +43,11 @@ for line in lines:
     new_chords_joined = update_chords(line, keep_na=False)
     new_lines.append(new_chords_joined)
 
-with open('test_chords_edited.txt', 'w') as f:
+with open('chords_edited.txt', 'w') as f:
     for chord in new_lines:
         f.write(chord)
 
-with open('test_chords.tsv') as f:
+with open('chords.tsv') as f:
     all_lines = f.readlines()
 
 lines = [line.replace("\n", "") for line in all_lines[1:]]
@@ -60,6 +60,6 @@ for line in lines:
 
 new_lines = ['name,long_name,chord\n'] + new_lines
 
-with open('test_chords_edited.csv', 'w') as f:
+with open('chords_edited.csv', 'w') as f:
     for chord in new_lines:
         f.write(chord)
