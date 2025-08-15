@@ -101,7 +101,7 @@ def main():
     chord_tokenizer = Tokenizer.from_file("chord_tokenizer.json")
 
     train_df = pd.read_csv("train_chords_edited.csv")
-    midis_we_have = list(Path(f'new_simplified_{bass_or_melody}_files_c_midi').resolve().glob('*.mid'))
+    midis_we_have = list(Path(f'new_simplified_{bass_or_melody}_files_c_midi_equal_length').resolve().glob('*.mid'))
     midis_we_have = [item.name[:-24] for item in midis_we_have] # changed from 22 for melody
     train_df = train_df[train_df["long_name"].isin(midis_we_have)]
     midis_path = f"new_simplified_{bass_or_melody}_files_c_midi"
