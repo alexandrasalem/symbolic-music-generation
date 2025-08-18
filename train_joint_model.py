@@ -1,0 +1,297 @@
+import torch.optim as optim
+import torch
+import torch.nn as nn
+from pathlib import Path
+from miditok import REMI, TokenizerConfig
+from miditok.pytorch_data import DatasetMIDI, DataCollator
+from torch.utils.data import DataLoader
+# from utils import load_pretrain_data, split_pretrain_data, compute_token_type_distribution
+from models import RemiDecoder, ChordEncoder, Chord2JointMidiTransformer
+from tqdm import tqdm
+from torch.optim.lr_scheduler import LambdaLR
+import logging
+import os
+#from tqdm.auto import tqdm
+import pandas as pd
+from chord_to_midi_dataset import ChordBassMelodyDataset
+from tokenizers import Tokenizer
+
+def validate(model, val_dataloader, criterion, device, epoch):
+    model.eval()
+    total_loss = 0
+    total_tokens = 0
+
+    with torch.no_grad():
+        for batch in tqdm(val_dataloader, desc="Validating"):
+            input_ids = batch['input_ids'].to(device)  # (B, T)
+            attention_mask = batch['attention_mask'].to(device)
+
+            decoder_input = input_ids[:, :-1]  # (B, T-1)
+            tgt = input_ids[:, 1:]  # (B, T-1)
+            attn_mask = attention_mask[:, :-1]
+            tgt_key_padding_mask = (attn_mask == 0)
+
+            logits = model(
+                decoder_input,
+                tgt_key_padding_mask=tgt_key_padding_mask,
+                memory=None
+            )  # (B, T-1, vocab_size)
+
+            logits_flat = logits.reshape(-1, logits.size(-1))
+            tgt_flat = tgt.reshape(-1)
+
+            valid_tokens = (tgt_flat != criterion.ignore_index).sum().item()
+            loss = criterion(logits_flat, tgt_flat)
+
+            total_loss += loss.item() * valid_tokens
+            total_tokens += valid_tokens
+
+    avg_loss = total_loss / total_tokens
+    log_msg = f"Epoch {epoch} - Validation Loss: {avg_loss:.4f}"
+    print(log_msg)
+    logging.info(log_msg)
+    model.train()
+
+
+def generate_samples(model, epoch, bos_id, eos_id, device, max_len=512, ):
+    model.eval()
+    os.makedirs(f"token_distribution/epoch_{epoch}", exist_ok=True)
+    top_p_ids = model.generate(
+        bos_id=bos_id,
+        eos_id=eos_id,
+        decoding_strategy="top_p",
+        top_p=0.9,
+        max_len=max_len,
+        device=device
+    )
+    # token_distribution = compute_token_type_distribution(top_p_ids)
+    # with open(f"token_distribution/epoch_{epoch}/sampled_track.pkl", 'wb') as f:
+    #     pickle.dump(token_distribution, f)
+
+    model.train()
+
+def extract_prefix(filename):
+    # Remove extension and everything after '_simplified'
+    stem = Path(filename).stem
+    return stem.split('_simplified')[0]
+
+def construct_train_df(
+    chords_csv_path,
+    melody_folder,
+    bass_folder,
+    output_csv_path=None
+):
+    df = pd.read_csv(chords_csv_path)
+    melody_files = {extract_prefix(f): str(f.resolve()) for f in Path(melody_folder).glob("*.mid")}
+    bass_files = {extract_prefix(f): str(f.resolve()) for f in Path(bass_folder).glob("*.mid")}
+
+    df["melody_path"] = df["long_name"].map(melody_files)
+    df["bass_path"] = df["long_name"].map(bass_files)
+
+    df = df.dropna(subset=["melody_path", "bass_path"])
+
+    if output_csv_path:
+        df.to_csv(output_csv_path, index=False)
+
+    print(f"Data Length: {len(df)}")
+    return df
+
+def main():
+    logging.basicConfig(
+        filename=f'chord2joint_train_log.log',
+        level=logging.INFO,
+        format='%(asctime)s — %(levelname)s — %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+    checkpoints_loc = f'chord2joint_train_checkpoints'
+    os.makedirs(checkpoints_loc, exist_ok=True)
+
+    TOKENIZER_PARAMS = {
+        "pitch_range": (21, 109),
+        "beat_res": {(0, 4): 8, (4, 12): 4},
+        "num_velocities": 32,
+        "special_tokens": ["PAD", "BOS", "EOS", "MASK"],
+        "use_chords": False,
+        "use_rests": False,
+        "use_tempos": True,
+        "use_time_signatures": False,
+        "use_programs": False,
+        "num_tempos": 32,  # number of tempo bins
+        "tempo_range": (40, 250),  # (min, max)
+    }
+    config = TokenizerConfig(**TOKENIZER_PARAMS)
+    bass_tokenizer = REMI(config)
+    melody_tokenizer = REMI(config)
+    chord_tokenizer = Tokenizer.from_file("chord_tokenizer.json")
+
+
+    #bass_midis_we_have = list(Path(f'new_simplified_bass_files_c_midi_equal_length').resolve().glob('*.mid'))
+    #bass_midis_we_have = [item.name[:-22] for item in bass_midis_we_have] # changed from 22 for melody
+    #melody_midis_we_have = list(Path(f'new_simplified_melody_files_c_midi_equal_length').resolve().glob('*.mid'))
+    #melody_midis_we_have = [item.name[:-24] for item in melody_midis_we_have] # changed from 22 for melody
+
+    #bass_and_melody_midis_we_have = list(set(melody_midis_we_have) & set(bass_midis_we_have))
+    #train_df = pd.read_csv("train_chords_edited.csv")
+    #train_df = train_df[train_df["long_name"].isin(bass_and_melody_midis_we_have)]
+
+    bass_midis_path = f"new_simplified_bass_files_c_midi_equal_length"
+    melody_midis_path = f"new_simplified_melody_files_c_midi_equal_length"
+
+    train_df = construct_train_df(
+        chords_csv_path="train_chords_edited.csv",
+        melody_folder="new_simplified_bass_files_c_midi_equal_length",
+        bass_folder="new_simplified_melody_files_c_midi_equal_length",
+        output_csv_path="train_joint.csv"
+    )
+
+    train_dataset = ChordBassMelodyDataset(
+        dataframe=train_df,
+        chord_tokenizer=chord_tokenizer,
+        bass_tokenizer=bass_tokenizer,
+        melody_tokenizer=melody_tokenizer,
+        max_length=128,
+    )
+    batch_size = 8
+    train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size)
+
+    # this needs to be updated for joint model--will what Shayan added work?
+    # train_dataset = ChordBassMelodyDataset(
+    #     train_df,
+    #     midis_path=midis_path,
+    #     midi_tokenizer=midi_tokenizer,
+    #     chord_tokenizer=chord_tokenizer,
+    #     bass_or_melody=bass_or_melody,
+    #     max_length=128
+    # )
+    # batch_size = 8
+    # train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size)
+
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    encoder = ChordEncoder(
+        chord_tokenizer.get_vocab_size(),
+        d_model=256,
+        num_layers=1,
+        nhead=2
+    )
+
+    bass_decoder = RemiDecoder(
+        len(bass_tokenizer.vocab),
+        d_model=256,
+        num_layers=6,
+        nhead=8
+    )
+
+    melody_decoder = RemiDecoder(
+        len(melody_tokenizer.vocab),
+        d_model=256,
+        num_layers=6,
+        nhead=8
+    )
+    model = Chord2JointMidiTransformer(encoder, bass_decoder, melody_decoder) #Chord2MidiTransformer(encoder, decoder)
+
+    # use multiple gpu if available
+    # if torch.cuda.device_count() > 1:
+    #    print(f"Using {torch.cuda.device_count()} GPUs")
+    #    model = nn.DataParallel(model)
+
+    model.to(device)
+    print(f"model moved to {device}!")
+
+    warmup_steps = 1000
+
+    def lr_lambda(current_step):
+        if current_step < warmup_steps:
+            return float(current_step) / float(max(1, warmup_steps))
+        return 1.0
+
+    criterion = nn.CrossEntropyLoss(ignore_index=bass_tokenizer.pad_token_id) # same for chord and bass tokenizers
+    optimizer = optim.AdamW(model.parameters(), lr=1e-4)
+    scheduler = LambdaLR(optimizer, lr_lambda)
+
+    # load from checkpoints
+    # model, optimizer, start_epoch = load_checkpoint(model, optimizer, "pretrain_checkpoints")
+    # print(f"Loaded checkpoints! starting training from EPOCH: {start_epoch}: ")
+
+    start_epoch = 0
+    num_epochs = 401
+    save_every = 50
+    val_every = 50
+    log_interval = 1000
+
+    model.train()
+    for epoch in range(num_epochs):
+        epoch_loss = 0.0
+        for batch in tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}"):
+            chord_input_ids = batch["chord_input_ids"].to(device)
+            chord_attention_mask = batch["chord_attention_mask"].to(device)
+            bass_input_ids = batch["bass_input_ids"].to(device)
+            melody_input_ids = batch["melody_input_ids"].to(device)
+
+            # Prepare targets for bass and melody
+            bass_input = bass_input_ids[:, :-1]
+            bass_target = bass_input_ids[:, 1:]
+            melody_input = melody_input_ids[:, :-1]
+            melody_target = melody_input_ids[:, 1:]
+
+            bass_tgt_key_padding_mask = (bass_input == bass_tokenizer.pad_token_id)
+            melody_tgt_key_padding_mask = (melody_input == melody_tokenizer.pad_token_id)
+
+            bass_logits, melody_logits = model(
+                chord_input_ids,
+                chord_attention_mask,
+                bass_target,
+                melody_target,
+                bass_tgt_key_padding_mask=bass_tgt_key_padding_mask,
+                melody_tgt_key_padding_mask=melody_tgt_key_padding_mask,
+            )
+            # input_ids, attn_mask, tgt = [x.to(device) for x in batch]
+            #
+            # tgt_input = tgt[:, :-1]
+            # tgt_target = tgt[:, 1:]
+            #
+            # tgt_key_padding_mask = (tgt_input == midi_tokenizer.pad_token_id)
+            #
+            # logits = model(
+            #     input_ids=input_ids,
+            #     attention_mask=attn_mask,
+            #     tgt=tgt_input,
+            #     tgt_key_padding_mask=tgt_key_padding_mask
+            # )
+
+            # logits_flat = logits.reshape(-1, logits.size(-1))
+            # tgt_target_flat = tgt_target.reshape(-1)
+            # loss = criterion(logits_flat, tgt_target_flat)
+
+            bass_loss = criterion(bass_logits.reshape(-1, bass_logits.size(-1)), bass_target.reshape(-1))
+            melody_loss = criterion(melody_logits.reshape(-1, melody_logits.size(-1)), melody_target.reshape(-1))
+            loss = bass_loss + melody_loss
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
+
+            epoch_loss += loss.item()
+        log_msg = f"Epoch {epoch} — Loss: {epoch_loss / len(train_dataloader) * batch_size:.4f}"
+        print(log_msg)
+
+        if epoch % save_every == 0:# and epoch != 0:
+            checkpoint_path = f"{checkpoints_loc}/chord2joint_epoch_{epoch}.pt"
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.module.state_dict() if isinstance(model,
+                                                                            nn.DataParallel) else model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': loss.item(),
+            }, checkpoint_path)
+            print(f"Saved checkpoint: {checkpoint_path}")
+
+        # avg_loss = epoch_loss / len(train_dataloader)
+        # logging.info(f"Epoch {epoch} — Loss: {avg_loss:.4f}")
+        # print(f"Epoch {epoch} — Loss: {avg_loss:.4f}")
+
+if __name__ == "__main__":
+    main()

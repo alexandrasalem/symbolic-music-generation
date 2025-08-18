@@ -60,10 +60,10 @@ class ChordEncoder(nn.Module):
             attn_mask = None
 
         # Added this causal mask to input
-        input_mask = Transformer.generate_square_subsequent_mask(T).to(input_ids.device)
+        #input_mask = Transformer.generate_square_subsequent_mask(T).to(input_ids.device)
 
         # Added mask and is_causal to the encoder
-        output = self.encoder(x, mask = input_mask, src_key_padding_mask=attn_mask, is_causal=True)  # [seq_len, batch_size, d_model]
+        output = self.encoder(x, src_key_padding_mask=attn_mask)#self.encoder(x, mask = input_mask, src_key_padding_mask=attn_mask, is_causal=True)  # [seq_len, batch_size, d_model]
         return output
 
 class RemiDecoder(nn.Module):
@@ -114,6 +114,7 @@ class RemiDecoder(nn.Module):
             tgt_mask=tgt_mask,
             tgt_key_padding_mask=tgt_key_padding_mask,
         )
+
 
         logits = self.out_proj(decoded)
 
@@ -233,3 +234,90 @@ class Chord2MidiTransformer(nn.Module):
         )
 
         return generated_ids
+
+
+class Chord2JointMidiTransformer(nn.Module):
+
+    def __init__(self,
+                 encoder,
+                 bass_decoder,
+                 melody_decoder,
+                 #hidden_size,
+                 #output_dim_a,
+                 #output_dim_b
+                 ):
+        super().__init__()
+        self.encoder = encoder
+        self.bass_decoder = bass_decoder
+        self.melody_decoder = melody_decoder
+        self.memory_proj = nn.Linear(
+            encoder.token_embedding.embedding_dim,
+            bass_decoder.token_embedding.embedding_dim #same for bass and melody
+        )
+
+    def forward(self,
+                input_ids,
+                attention_mask,
+                bass_tgt,
+                melody_tgt,
+                bass_tgt_key_padding_mask=None,
+                melody_tgt_key_padding_mask=None,
+    ):
+        with torch.no_grad():
+            encoder_out = self.encoder(input_ids, attention_mask)
+
+        memory = self.memory_proj(encoder_out) # (B, T, d_dec)
+
+        bass_decoder_out = self.bass_decoder(
+            bass_tgt,
+            tgt_key_padding_mask=bass_tgt_key_padding_mask,
+            memory=memory,
+        )
+
+        melody_decoder_out = self.melody_decoder(
+            melody_tgt,
+            tgt_key_padding_mask=melody_tgt_key_padding_mask,
+            memory=memory,
+        )
+
+
+        return bass_decoder_out, melody_decoder_out
+
+    def generate(
+        self,
+        input_ids,
+        attention_mask,
+        bos_id,
+        eos_id,
+        max_len=128,
+        decoding_strategy="top_p",
+        top_p=0.9,
+        device=None,
+    ):
+        device = device or input_ids.device
+
+        with torch.no_grad():
+            encoder_out = self.encoder(input_ids, attention_mask)
+            memory = self.memory_proj(encoder_out)
+
+        generated_ids_bass = self.bass_decoder.generate(
+            bos_id=bos_id,
+            eos_id=eos_id,
+            max_len=max_len,
+            decoding_strategy=decoding_strategy,
+            top_p=top_p,
+            device=device,
+            memory=memory,
+        )
+
+        generated_ids_melody = self.melody_decoder.generate(
+            bos_id=bos_id,
+            eos_id=eos_id,
+            max_len=max_len,
+            decoding_strategy=decoding_strategy,
+            top_p=top_p,
+            device=device,
+            memory=memory,
+        )
+
+        return generated_ids_bass, generated_ids_melody
