@@ -1,5 +1,5 @@
 from miditok import REMI, TokenizerConfig
-from models import RemiDecoder, ChordEncoder, Chord2MidiTransformer
+from models import RemiDecoder, ChordEncoder, Chord2JointMidiTransformer
 import torch
 import os
 from utils import convert_to_midi_files
@@ -48,7 +48,8 @@ def main():
     "tempo_range": (40, 250),  # (min, max)
     }
     config = TokenizerConfig(**TOKENIZER_PARAMS)
-    midi_tokenizer = REMI(config)
+    bass_tokenizer = REMI(config)
+    melody_tokenizer = REMI(config)
     chord_tokenizer = Tokenizer.from_file("chord_tokenizer.json")
 
     bos_id = 1
@@ -62,23 +63,29 @@ def main():
         nhead=2
     )
 
-    decoder = RemiDecoder(
-        len(midi_tokenizer.vocab),
+    bass_decoder = RemiDecoder(
+        len(bass_tokenizer.vocab),
         d_model=256,
         num_layers=6,
         nhead=8
     )
-    model = Chord2MidiTransformer(encoder, decoder)
+
+    melody_decoder = RemiDecoder(
+        len(melody_tokenizer.vocab),
+        d_model=256,
+        num_layers=6,
+        nhead=8
+    )
+    model = Chord2JointMidiTransformer(encoder, bass_decoder, melody_decoder)
 
     max_length = 128
-    checkpoint = torch.load(f"chord2{bass_or_melody}_train_checkpoints/chord2{bass_or_melody}_epoch_{epoch_to_load}.pt", map_location=device)
+    checkpoint = torch.load(f"chord2joint_train_checkpoints/chord2joint_epoch_{epoch_to_load}.pt", map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     model.to(device)
 
     print("Model loaded from checkpoint!")
 
-    #test_data = pd.read_csv(test_data_loc)
     test_data = construct_test_df(
         chords_csv_path="test_chords_edited.csv",
         bass_folder="new_simplified_bass_files_c_midi",
@@ -88,12 +95,13 @@ def main():
     print("Test data (chord progressions) loaded!")
 
     #os.makedirs(f"token_distribution/epoch_{epoch_to_load}", exist_ok=True)
-    os.makedirs(f"chord2{bass_or_melody}_samples", exist_ok=True)
-    os.makedirs(f"chord2{bass_or_melody}_samples/generated_midis_{epoch_to_load}", exist_ok=True)
+    os.makedirs(f"chord2joint_samples", exist_ok=True)
+    os.makedirs(f"chord2joint_samples/generated_midis_{epoch_to_load}", exist_ok=True)
+    os.makedirs(f"chord2joint_samples/generated_midis_{epoch_to_load}/bass", exist_ok=True)
+    os.makedirs(f"chord2joint_samples/generated_midis_{epoch_to_load}/melody", exist_ok=True)
 
     print("START GENERATING..")
     for idx, row in test_data.iterrows():
-        # print(idx)
         tokenized = chord_tokenizer.encode(
             row['chord'],
         )
@@ -114,7 +122,7 @@ def main():
         attn_mask = attn_mask.unsqueeze(0)
 
         # generate samples
-        generated_ids = model.generate(
+        bass_generated_ids, melody_generated_ids = model.generate(
             input_ids=input_ids,
             attention_mask=attn_mask,
             bos_id=bos_id,
@@ -125,10 +133,19 @@ def main():
             device=device
         )
         name = row['long_name']
-        path = f"chord2{bass_or_melody}_samples/generated_midis_{epoch_to_load}/{name}_generated.mid"
+
+        path = f"chord2joint_samples/generated_midis_{epoch_to_load}/bass/{name}_generated.mid"
         convert_to_midi_files(
-            generated_ids,
-            midi_tokenizer,
+            bass_generated_ids,
+            bass_tokenizer,
+            idx+1,
+            path
+        )
+
+        path = f"chord2joint_samples/generated_midis_{epoch_to_load}/melody/{name}_generated.mid"
+        convert_to_midi_files(
+            melody_generated_ids,
+            melody_tokenizer,
             idx+1,
             path
         )
@@ -137,5 +154,4 @@ def main():
 if __name__ == "__main__":
     test_data_loc = "test_chords_edited.csv"
     epoch_to_load = 400
-    bass_or_melody = "melody"
     main()

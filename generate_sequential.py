@@ -1,5 +1,5 @@
 from miditok import REMI, TokenizerConfig
-from models import RemiDecoder, ChordEncoder, Chord2MidiTransformer
+from models import RemiDecoder, SequentialRemiDecoder, ChordEncoder, Chord2SequentialMidiTransformer
 import torch
 import os
 from utils import convert_to_midi_files
@@ -34,6 +34,10 @@ def construct_test_df(
     return df
 
 def main():
+    if bass_first:
+        bass_or_melody = 'bass_first'
+    else:
+        bass_or_melody = 'melody_first'
     TOKENIZER_PARAMS = {
     "pitch_range": (21, 109),
     "beat_res": {(0, 4): 8, (4, 12): 4},
@@ -49,36 +53,44 @@ def main():
     }
     config = TokenizerConfig(**TOKENIZER_PARAMS)
     midi_tokenizer = REMI(config)
+    bass_tokenizer = midi_tokenizer
+    melody_tokenizer = midi_tokenizer
     chord_tokenizer = Tokenizer.from_file("chord_tokenizer.json")
 
     bos_id = 1
     eos_id = 2
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    encoder = ChordEncoder(
-        chord_tokenizer.get_vocab_size(),
+    chord_encoder = ChordEncoder(
+        vocab_size=chord_tokenizer.get_vocab_size(),
         d_model=256,
-        num_layers=1,
-        nhead=2
+        num_layers=2,
+        nhead=4
     )
-
-    decoder = RemiDecoder(
-        len(midi_tokenizer.vocab),
+    first_decoder = RemiDecoder(
+        vocab_size=len(midi_tokenizer.vocab),
         d_model=256,
-        num_layers=6,
+        num_layers=2,
+        nhead=4
+    )
+    second_decoder = SequentialRemiDecoder(
+        vocab_size=len(midi_tokenizer.vocab),
+        d_model=256,
+        num_layers=4,
         nhead=8
     )
-    model = Chord2MidiTransformer(encoder, decoder)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = Chord2SequentialMidiTransformer(chord_encoder, first_decoder, second_decoder)
+    model.to(device)
 
     max_length = 128
-    checkpoint = torch.load(f"chord2{bass_or_melody}_train_checkpoints/chord2{bass_or_melody}_epoch_{epoch_to_load}.pt", map_location=device)
+    checkpoint = torch.load(f"chord2sequential{bass_or_melody}_train_checkpoints/chord2sequential{bass_or_melody}_epoch_{epoch_to_load}.pt", map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     model.to(device)
 
     print("Model loaded from checkpoint!")
 
-    #test_data = pd.read_csv(test_data_loc)
     test_data = construct_test_df(
         chords_csv_path="test_chords_edited.csv",
         bass_folder="new_simplified_bass_files_c_midi",
@@ -88,12 +100,13 @@ def main():
     print("Test data (chord progressions) loaded!")
 
     #os.makedirs(f"token_distribution/epoch_{epoch_to_load}", exist_ok=True)
-    os.makedirs(f"chord2{bass_or_melody}_samples", exist_ok=True)
-    os.makedirs(f"chord2{bass_or_melody}_samples/generated_midis_{epoch_to_load}", exist_ok=True)
+    os.makedirs(f"chord2sequential{bass_or_melody}_samples", exist_ok=True)
+    os.makedirs(f"chord2sequential{bass_or_melody}_samples/generated_midis_{epoch_to_load}", exist_ok=True)
+    os.makedirs(f"chord2sequential{bass_or_melody}_samples/generated_midis_{epoch_to_load}/bass", exist_ok=True)
+    os.makedirs(f"chord2sequential{bass_or_melody}_samples/generated_midis_{epoch_to_load}/melody", exist_ok=True)
 
     print("START GENERATING..")
     for idx, row in test_data.iterrows():
-        # print(idx)
         tokenized = chord_tokenizer.encode(
             row['chord'],
         )
@@ -114,21 +127,46 @@ def main():
         attn_mask = attn_mask.unsqueeze(0)
 
         # generate samples
-        generated_ids = model.generate(
-            input_ids=input_ids,
-            attention_mask=attn_mask,
-            bos_id=bos_id,
-            eos_id=eos_id,
-            max_len=max_length,
-            decoding_strategy="top_p",
-            top_p=0.9,
-            device=device
-        )
+        if bass_first:
+            bass_generated_ids, melody_generated_ids = model.generate(
+                chord_input_ids=input_ids,
+                chord_attention_mask=attn_mask,
+                first_bos_id=bos_id,
+                first_eos_id=eos_id,
+                second_bos_id=bos_id,
+                second_eos_id=eos_id,
+                max_len=max_length,
+                decoding_strategy="top_p",
+                top_p=0.9,
+                device=device
+            )
+        else:
+            melody_generated_ids, bass_generated_ids = model.generate(
+                chord_input_ids=input_ids,
+                chord_attention_mask=attn_mask,
+                first_bos_id=bos_id,
+                first_eos_id=eos_id,
+                second_bos_id=bos_id,
+                second_eos_id=eos_id,
+                max_len=max_length,
+                decoding_strategy="top_p",
+                top_p=0.9,
+                device=device
+            )
         name = row['long_name']
-        path = f"chord2{bass_or_melody}_samples/generated_midis_{epoch_to_load}/{name}_generated.mid"
+
+        path = f"chord2sequential{bass_or_melody}_samples/generated_midis_{epoch_to_load}/bass/{name}_generated.mid"
         convert_to_midi_files(
-            generated_ids,
-            midi_tokenizer,
+            bass_generated_ids,
+            bass_tokenizer,
+            idx+1,
+            path
+        )
+
+        path = f"chord2sequential{bass_or_melody}_samples/generated_midis_{epoch_to_load}/melody/{name}_generated.mid"
+        convert_to_midi_files(
+            melody_generated_ids,
+            melody_tokenizer,
             idx+1,
             path
         )
@@ -136,6 +174,6 @@ def main():
 
 if __name__ == "__main__":
     test_data_loc = "test_chords_edited.csv"
+    bass_first = False
     epoch_to_load = 400
-    bass_or_melody = "melody"
     main()

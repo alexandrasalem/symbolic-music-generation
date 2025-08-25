@@ -4,9 +4,8 @@ import torch
 import os
 from tqdm import tqdm
 from utils import convert_to_midi_files
+import pandas as pd
 
-epoch_to_load = 400
-bass_or_melody = "bass"
 
 def main():
     TOKENIZER_PARAMS = {
@@ -15,7 +14,7 @@ def main():
     "num_velocities": 32,
     "special_tokens": ["PAD", "BOS", "EOS", "MASK"],
     "use_chords": False,
-    "use_rests": False,
+    "use_rests": True,
     "use_tempos": True,
     "use_time_signatures": False,
     "use_programs": False,
@@ -44,20 +43,20 @@ def main():
 
     #os.makedirs(f"token_distribution/epoch_{epoch_to_load}", exist_ok=True)
     os.makedirs(f"nothingprior2{bass_or_melody}_samples", exist_ok=True)
-    os.makedirs(f"nothingprior2{bass_or_melody}_{bass_or_melody}/generated_midis_{epoch_to_load}", exist_ok=True)
-
+    os.makedirs(f"nothingprior2{bass_or_melody}_samples/generated_midis_{epoch_to_load}", exist_ok=True)
+    test_data = pd.read_csv("test_joint.csv")
     print("START GENERATING..")
-    for i in tqdm(range(15)):
+    for i in tqdm(range(len(test_data))):
         top_p_ids = model.generate(
             bos_id=bos_id,
             eos_id=eos_id,
             decoding_strategy="top_p",
             top_p=0.9,
-            max_len=512,
+            max_len=128,
             device=device
         )
 
-        path = f"nothingprior2{bass_or_melody}_{bass_or_melody}/generated_midis_{epoch_to_load}/track_{i+1}.mid"
+        path = f"nothingprior2{bass_or_melody}_samples/generated_midis_{epoch_to_load}/track_{i+1}.mid"
         convert_to_midi_files(
             top_p_ids,
             tokenizer,
@@ -66,4 +65,6 @@ def main():
         )
 
 if __name__ == "__main__":
+    epoch_to_load = 400
+    bass_or_melody = "melody"
     main()

@@ -6,7 +6,7 @@ from miditok import REMI, TokenizerConfig
 from miditok.pytorch_data import DatasetMIDI, DataCollator
 from torch.utils.data import DataLoader
 # from utils import load_pretrain_data, split_pretrain_data, compute_token_type_distribution
-from models import RemiDecoder, ChordEncoder, Chord2MidiTransformer
+from models import RemiDecoder, SequentialRemiDecoder, ChordEncoder, Chord2SequentialMidiTransformer
 from tqdm import tqdm
 from torch.optim.lr_scheduler import LambdaLR
 import logging
@@ -44,14 +44,18 @@ def construct_train_df(
 
 
 def main():
+    if bass_first:
+        bass_or_melody = 'bass_first'
+    else:
+        bass_or_melody = 'melody_first'
     logging.basicConfig(
-        filename=f'chord2{bass_or_melody}_train_log.log',
+        filename=f'chord2sequential{bass_or_melody}_train_log.log',
         level=logging.INFO,
         format='%(asctime)s — %(levelname)s — %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    checkpoints_loc = f'chord2{bass_or_melody}_train_checkpoints'
+    checkpoints_loc = f'chord2sequential{bass_or_melody}_train_checkpoints'
     os.makedirs(checkpoints_loc, exist_ok=True)
 
     TOKENIZER_PARAMS = {
@@ -69,13 +73,9 @@ def main():
     }
     config = TokenizerConfig(**TOKENIZER_PARAMS)
     midi_tokenizer = REMI(config)
+    bass_tokenizer = midi_tokenizer
+    melody_tokenizer = midi_tokenizer
     chord_tokenizer = Tokenizer.from_file("chord_tokenizer.json")
-
-    # train_df = pd.read_csv("train_chords_edited.csv")
-    # midis_we_have = list(Path(f'new_simplified_{bass_or_melody}_files_c_midi_equal_length').resolve().glob('*.mid'))
-    # midis_we_have = [item.name[:-22] for item in midis_we_have] # changed from 22 for melody
-    # train_df = train_df[train_df["long_name"].isin(midis_we_have)]
-    # midis_path = f"new_simplified_{bass_or_melody}_files_c_midi_equal_length"
 
     train_df = construct_train_df(
         chords_csv_path="train_chords_edited.csv",
@@ -84,36 +84,38 @@ def main():
         output_csv_path="train_joint.csv"
     )
 
-
-    # use same full dataset object for simplicity/comparison?
     train_dataset = ChordBassMelodyDataset(
         dataframe=train_df,
         chord_tokenizer=chord_tokenizer,
-        bass_tokenizer=midi_tokenizer,
-        melody_tokenizer=midi_tokenizer,
+        bass_tokenizer=bass_tokenizer,
+        melody_tokenizer=melody_tokenizer,
         max_length=128,
     )
-
     batch_size = 8
     train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size)
 
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    encoder = ChordEncoder(
-        chord_tokenizer.get_vocab_size(),
+    chord_encoder = ChordEncoder(
+        vocab_size=chord_tokenizer.get_vocab_size(),
         d_model=256,
-        num_layers=1,
-        nhead=2
+        num_layers=2,
+        nhead=4
     )
-
-    decoder = RemiDecoder(
-        len(midi_tokenizer.vocab),
+    first_decoder = RemiDecoder(
+        vocab_size=len(midi_tokenizer.vocab),
         d_model=256,
-        num_layers=6,
+        num_layers=2,
+        nhead=4
+    )
+    second_decoder = SequentialRemiDecoder(
+        vocab_size=len(midi_tokenizer.vocab),
+        d_model=256,
+        num_layers=4,
         nhead=8
     )
-    model = Chord2MidiTransformer(encoder, decoder)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = Chord2SequentialMidiTransformer(chord_encoder, first_decoder, second_decoder)
+    model.to(device)
 
     # use multiple gpu if available
     # if torch.cuda.device_count() > 1:
@@ -150,24 +152,43 @@ def main():
         for batch in tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}"):
             chord_input_ids = batch["chord_input_ids"].to(device)
             chord_attention_mask = batch["chord_attention_mask"].to(device)
-            midi_input_ids = batch[f"{bass_or_melody}_input_ids"].to(device)
+            bass_input_ids = batch["bass_input_ids"].to(device)
+            melody_input_ids = batch["melody_input_ids"].to(device)
 
             # Prepare targets for bass and melody
-            tgt_input = midi_input_ids[:, :-1]
-            tgt_target = midi_input_ids[:, 1:]
+            bass_input = bass_input_ids[:, :-1]
+            bass_target = bass_input_ids[:, 1:]
+            melody_input = melody_input_ids[:, :-1]
+            melody_target = melody_input_ids[:, 1:]
 
-            tgt_key_padding_mask = (tgt_input == midi_tokenizer.pad_token_id)
 
-            logits = model(
-                input_ids=chord_input_ids,
-                attention_mask=chord_attention_mask,
-                tgt=tgt_input,
-                tgt_key_padding_mask=tgt_key_padding_mask
-            )
 
-            logits_flat = logits.reshape(-1, logits.size(-1))
-            tgt_target_flat = tgt_target.reshape(-1)
-            loss = criterion(logits_flat, tgt_target_flat)
+            if bass_first:
+                first_tgt_key_padding_mask = (bass_input == bass_tokenizer.pad_token_id)
+                second_tgt_key_padding_mask = (melody_input == melody_tokenizer.pad_token_id)
+                bass_logits, melody_logits = model(
+                    chord_input_ids = chord_input_ids,
+                    chord_attention_mask = chord_attention_mask,
+                    first_input_ids = bass_input,
+                    second_input_ids = melody_input,
+                    first_tgt_key_padding_mask=first_tgt_key_padding_mask,
+                    second_tgt_key_padding_mask=second_tgt_key_padding_mask,
+                )
+            else:
+                first_tgt_key_padding_mask = (melody_input == melody_tokenizer.pad_token_id)
+                second_tgt_key_padding_mask = (bass_input == bass_tokenizer.pad_token_id)
+                melody_logits, bass_logits = model(
+                    chord_input_ids,
+                    chord_attention_mask,
+                    bass_input,
+                    melody_input,
+                    first_tgt_key_padding_mask=first_tgt_key_padding_mask,
+                    second_tgt_key_padding_mask=second_tgt_key_padding_mask,
+                )
+
+            bass_loss = criterion(bass_logits.reshape(-1, bass_logits.size(-1)), bass_target.reshape(-1))
+            melody_loss = criterion(melody_logits.reshape(-1, melody_logits.size(-1)), melody_target.reshape(-1))
+            loss = bass_loss + melody_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -175,24 +196,18 @@ def main():
             scheduler.step()
 
             epoch_loss += loss.item()
-        log_msg = f"Epoch {epoch} — Loss: {epoch_loss / len(train_dataloader) * batch_size:.4f}"
-        print(log_msg)
+        print(f"Epoch {epoch} — Loss: {epoch_loss / len(train_dataloader) * batch_size:.4f}")
 
-        if epoch % save_every == 0:# and epoch != 0:
-            checkpoint_path = f"{checkpoints_loc}/chord2{bass_or_melody}_epoch_{epoch}.pt"
+        if epoch % save_every == 0:
+            checkpoint_path = f"{checkpoints_loc}/chord2sequential{bass_or_melody}_epoch_{epoch}.pt"
             torch.save({
                 'epoch': epoch,
-                'model_state_dict': model.module.state_dict() if isinstance(model,
-                                                                            nn.DataParallel) else model.state_dict(),
+                'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'loss': loss.item(),
             }, checkpoint_path)
             print(f"Saved checkpoint: {checkpoint_path}")
 
-        # avg_loss = epoch_loss / len(train_dataloader)
-        # logging.info(f"Epoch {epoch} — Loss: {avg_loss:.4f}")
-        # print(f"Epoch {epoch} — Loss: {avg_loss:.4f}")
-
 if __name__ == "__main__":
-    bass_or_melody = "bass"
+    bass_first = True
     main()

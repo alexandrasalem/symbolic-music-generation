@@ -51,7 +51,7 @@ def convert_to_midi_files(
     "num_velocities": 32,
     "special_tokens": ["PAD", "BOS", "EOS", "MASK"],
     "use_chords": False,
-    "use_rests": False,
+    "use_rests": True,
     "use_tempos": True,
     "use_time_signatures": False,
     "use_programs": False,

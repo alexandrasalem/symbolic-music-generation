@@ -6,7 +6,7 @@ from miditok import REMI, TokenizerConfig
 from miditok.pytorch_data import DatasetMIDI, DataCollator
 from torch.utils.data import DataLoader
 # from utils import load_pretrain_data, split_pretrain_data, compute_token_type_distribution
-from models import RemiDecoder, ChordEncoder, Chord2JointMidiTransformer
+from models import RemiDecoder, ChordEncoder, Chord2JointDecoderMidiTransformer
 from tqdm import tqdm
 from torch.optim.lr_scheduler import LambdaLR
 import logging
@@ -16,59 +16,6 @@ import pandas as pd
 from chord_to_midi_dataset import ChordBassMelodyDataset
 from tokenizers import Tokenizer
 
-def validate(model, val_dataloader, criterion, device, epoch):
-    model.eval()
-    total_loss = 0
-    total_tokens = 0
-
-    with torch.no_grad():
-        for batch in tqdm(val_dataloader, desc="Validating"):
-            input_ids = batch['input_ids'].to(device)  # (B, T)
-            attention_mask = batch['attention_mask'].to(device)
-
-            decoder_input = input_ids[:, :-1]  # (B, T-1)
-            tgt = input_ids[:, 1:]  # (B, T-1)
-            attn_mask = attention_mask[:, :-1]
-            tgt_key_padding_mask = (attn_mask == 0)
-
-            logits = model(
-                decoder_input,
-                tgt_key_padding_mask=tgt_key_padding_mask,
-                memory=None
-            )  # (B, T-1, vocab_size)
-
-            logits_flat = logits.reshape(-1, logits.size(-1))
-            tgt_flat = tgt.reshape(-1)
-
-            valid_tokens = (tgt_flat != criterion.ignore_index).sum().item()
-            loss = criterion(logits_flat, tgt_flat)
-
-            total_loss += loss.item() * valid_tokens
-            total_tokens += valid_tokens
-
-    avg_loss = total_loss / total_tokens
-    log_msg = f"Epoch {epoch} - Validation Loss: {avg_loss:.4f}"
-    print(log_msg)
-    logging.info(log_msg)
-    model.train()
-
-
-def generate_samples(model, epoch, bos_id, eos_id, device, max_len=512, ):
-    model.eval()
-    os.makedirs(f"token_distribution/epoch_{epoch}", exist_ok=True)
-    top_p_ids = model.generate(
-        bos_id=bos_id,
-        eos_id=eos_id,
-        decoding_strategy="top_p",
-        top_p=0.9,
-        max_len=max_len,
-        device=device
-    )
-    # token_distribution = compute_token_type_distribution(top_p_ids)
-    # with open(f"token_distribution/epoch_{epoch}/sampled_track.pkl", 'wb') as f:
-    #     pickle.dump(token_distribution, f)
-
-    model.train()
 
 def extract_prefix(filename):
     # Remove extension and everything after '_simplified'
@@ -98,13 +45,13 @@ def construct_train_df(
 
 def main():
     logging.basicConfig(
-        filename=f'chord2joint_train_log.log',
+        filename=f'chord2jointdecoder_train_log.log',
         level=logging.INFO,
         format='%(asctime)s — %(levelname)s — %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    checkpoints_loc = f'chord2joint_train_checkpoints'
+    checkpoints_loc = f'chord2jointdecoder_train_checkpoints'
     os.makedirs(checkpoints_loc, exist_ok=True)
 
     TOKENIZER_PARAMS = {
@@ -175,20 +122,15 @@ def main():
         nhead=2
     )
 
-    bass_decoder = RemiDecoder(
+    decoder = RemiDecoder(
         len(bass_tokenizer.vocab),
         d_model=256,
         num_layers=6,
-        nhead=8
+        nhead=8,
+        include_linear_head=False
     )
 
-    melody_decoder = RemiDecoder(
-        len(melody_tokenizer.vocab),
-        d_model=256,
-        num_layers=6,
-        nhead=8
-    )
-    model = Chord2JointMidiTransformer(encoder, bass_decoder, melody_decoder) #Chord2MidiTransformer(encoder, decoder)
+    model = Chord2JointDecoderMidiTransformer(encoder = encoder, decoder = decoder, d_model = decoder.d_model, vocab_size=decoder.vocab_size) #Chord2MidiTransformer(encoder, decoder)
 
     # use multiple gpu if available
     # if torch.cuda.device_count() > 1:
@@ -277,7 +219,7 @@ def main():
         print(log_msg)
 
         if epoch % save_every == 0:# and epoch != 0:
-            checkpoint_path = f"{checkpoints_loc}/chord2joint_epoch_{epoch}.pt"
+            checkpoint_path = f"{checkpoints_loc}/chord2jointdecoder_epoch_{epoch}.pt"
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.module.state_dict() if isinstance(model,
