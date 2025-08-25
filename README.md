@@ -1,24 +1,15 @@
 # symbolic-music-generation
 
 ### Training
-The two main training files are `train_model.py` and `train_model_no_chords.py`.
+There are five training files and five corresponding generate files, for the five separate models.
+- `train_model_no_chords.py`: No Chord
+- `train_model.py`: Chord Independent (Bass and Melody models separate)
+- `train_sequential_model.py`: Chord Bass/Melody First
+- `train_joint_model.py`: Chord Co-Generate 1 (separate decoders, loss of both added)
+- `train_joint_decoder_model.py`: Chord Co-Generate 2 (one decoder, two linear heads)
 
-For `train_model.py` you need the MIDI files, the chord csv, and the chord tokenizer file.
-
-For `train_model_no_chords.py` you just need to MIDI files.
-
-In `train_model.py`, the model takes the chords as input, and generates the MIDI conditioned on the encoded chords. Causal masking is used on both the chord input and the target notes.
-
-In `train_model_no_chords.py`, the model just generates MIDI.
-
-In all of these models, we train `bass` and `melody` versions as two separate models.
-
-#### To-Do
-These two tasks will require making a new model class in `models.py`.
-- Add a model that generates the bass and then afterwards the melody (instead of two separate models).
-- Add a model that generates both the bass and melody at the same time--one note for each per chord.
 
 ### Generation
-You generate new samples with `generate.py` and `generate_no_chords.py`.
+You generate new samples with `generate.py` and the other similar files.
 
-You can evaluate the results with `evaluate.py`.
+You can evaluate the results with `metrics.py` and `t-tests.py`.
