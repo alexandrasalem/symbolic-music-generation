@@ -10,6 +10,10 @@ There are five training files and five corresponding generate files, for the fiv
 
 
 ### Generation
-You generate new samples with `generate.py` and the other similar files.
+Generation is done with `generate.py` and the other similar files.
 
-You can evaluate the results with `metrics.py` and `t-tests.py`.
+Evaluation is performed with `metrics.py` and `t-tests.py`.
+
+### Samples
+
+A small selection of generated files are in `samples/`.
