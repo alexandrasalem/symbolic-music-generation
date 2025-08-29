@@ -1,12 +1,11 @@
 # symbolic-music-generation
 
 ### Training
-There are five training files and five corresponding generate files, for the five separate models.
+There are four training files and four corresponding generate files, for the five separate models.
 - `train_model_no_chords.py`: No Chord
 - `train_model.py`: Chord Independent (Bass and Melody models separate)
-- `train_sequential_model.py`: Chord Bass/Melody First
-- `train_joint_model.py`: Chord Co-Generate 1 (separate decoders, loss of both added)
-- `train_joint_decoder_model.py`: Chord Co-Generate 2 (one decoder, two linear heads)
+- `train_sequential_model.py`: Chord Bass/Melody 1st
+- `train_joint_decoder_model.py`: Chord Co-Generate (one decoder, two linear heads)
 
 
 ### Generation
