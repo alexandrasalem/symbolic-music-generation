@@ -130,3 +130,100 @@ class ChordBassMelodyDataset(Dataset):
             "bass_input_ids": bass_tensor,
             "melody_input_ids": melody_tensor,
         }
+
+class ChordBassMelodyAllMidiDataset(Dataset):
+    def __init__(
+        self,
+        dataframe,
+        chord_tokenizer,
+        bass_tokenizer,
+        melody_tokenizer,
+        max_length=128,
+    ):
+        self.df = dataframe
+        self.chord_tokenizer = chord_tokenizer
+        self.bass_tokenizer = bass_tokenizer
+        self.melody_tokenizer = melody_tokenizer
+        self.chord_max_length = max_length
+        self.bass_max_length = max_length
+        self.melody_max_length = max_length
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+
+        # Chord
+        # chord_tokenized = self.chord_tokenizer.encode(row['chord'])
+        # chord_input_ids, chord_attn_mask = chord_tokenized.ids, chord_tokenized.attention_mask
+        # chord_pad_token = self.chord_tokenizer.token_to_id('[PAD]')
+        # if len(chord_input_ids) < self.chord_max_length:
+        #     pad_len = self.chord_max_length - len(chord_input_ids)
+        #     chord_input_ids += [chord_pad_token] * pad_len
+        #     chord_attn_mask += [chord_pad_token] * pad_len
+        # else:
+        #     chord_input_ids = chord_input_ids[:self.chord_max_length]
+        #     chord_attn_mask = chord_attn_mask[:self.chord_max_length]
+
+        chord_file_path = row['chord_path']
+        chord_tokenized = self.chord_tokenizer(chord_file_path)
+        # print chord tokenized for debugging
+        # print(chord_tokenized)
+        chord_ids = chord_tokenized[0].ids
+        chord_ids = [1] + chord_ids + [2]
+        chord_pad_token = self.chord_tokenizer.pad_token_id
+        chord_tensor = torch.tensor(chord_ids, dtype=torch.long)
+        T_chord = chord_tensor.size(0)
+
+        if T_chord < self.chord_max_length:
+            pad_len = self.chord_max_length - T_chord
+            pad_tensor = torch.full((pad_len,), chord_pad_token, dtype=torch.long)
+            chord_tensor = torch.cat([chord_tensor, pad_tensor])
+        else:
+            chord_tensor = chord_tensor[:self.chord_max_length]
+            chord_tensor[-1] = 2  # self.chord_tokenizer.token_to_id('[EOS]')
+
+        # Bass
+        bass_file_path = row['bass_path']
+        bass_tokenized = self.bass_tokenizer(bass_file_path)
+        # print bass tokenized for debugging
+        # print(bass_tokenized)
+        bass_ids = bass_tokenized[0].ids
+        bass_ids = [1] + bass_ids + [2]
+        bass_pad_token = self.bass_tokenizer.pad_token_id
+        bass_tensor = torch.tensor(bass_ids, dtype=torch.long)
+        T_bass = bass_tensor.size(0)
+
+        if T_bass < self.bass_max_length:
+            pad_len = self.bass_max_length - T_bass
+            pad_tensor = torch.full((pad_len,), bass_pad_token, dtype=torch.long)
+            bass_tensor = torch.cat([bass_tensor, pad_tensor])
+        else:
+            bass_tensor = bass_tensor[:self.bass_max_length]
+            bass_tensor[-1] = 2 #self.bass_tokenizer.token_to_id('[EOS]')
+
+        # Melody
+        melody_file_path = row['melody_path']
+        melody_tokenized = self.melody_tokenizer(melody_file_path)
+        melody_ids = melody_tokenized[0].ids
+        melody_ids = [1] + melody_ids + [2]
+        melody_pad_token = self.melody_tokenizer.pad_token_id
+        melody_tensor = torch.tensor(melody_ids, dtype=torch.long)
+        T_melody = melody_tensor.size(0)
+        if T_melody < self.melody_max_length:
+            pad_len = self.melody_max_length - T_melody
+            pad_tensor = torch.full((pad_len,), melody_pad_token, dtype=torch.long)
+            melody_tensor = torch.cat([melody_tensor, pad_tensor])
+        else:
+            melody_tensor = melody_tensor[:self.melody_max_length]
+            melody_tensor[-1] = 2 #self.melody_tokenizer.token_to_id('[EOS]') # ignoring this for now
+            # TODO: add EOS token if needed
+
+        return {
+            #"chord_input_ids": torch.tensor(chord_input_ids, dtype=torch.long),
+            #"chord_attention_mask": torch.tensor(chord_attn_mask, dtype=torch.long),
+            "chord_input_ids": chord_tensor,
+            "bass_input_ids": bass_tensor,
+            "melody_input_ids": melody_tensor,
+        }
