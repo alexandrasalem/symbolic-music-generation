@@ -45,13 +45,13 @@ def construct_train_df(
 
 def main():
     logging.basicConfig(
-        filename=f'chord2jointdecoder_train_log.log',
+        filename=f'chord2symmetricdecoder_train_log.log',
         level=logging.INFO,
         format='%(asctime)s — %(levelname)s — %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    checkpoints_loc = f'chord2jointdecoder_train_checkpoints'
+    checkpoints_loc = f'chord2symmetricdecoder_train_checkpoints'
     os.makedirs(checkpoints_loc, exist_ok=True)
 
     TOKENIZER_PARAMS = {
@@ -213,7 +213,7 @@ def main():
         print(log_msg)
 
         if epoch % save_every == 0:# and epoch != 0:
-            checkpoint_path = f"{checkpoints_loc}/chord2jointdecoder_epoch_{epoch}.pt"
+            checkpoint_path = f"{checkpoints_loc}/chord2symmetricdecoder_epoch_{epoch}.pt"
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.module.state_dict() if isinstance(model,
