@@ -66,5 +66,7 @@ def main():
 
 if __name__ == "__main__":
     epoch_to_load = 400
+    bass_or_melody = "bass"
+    main()
     bass_or_melody = "melody"
     main()

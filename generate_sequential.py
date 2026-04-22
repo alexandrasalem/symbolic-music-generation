@@ -50,6 +50,7 @@ def main():
     "use_programs": False,
     "num_tempos": 32,  # number of tempo bins
     "tempo_range": (40, 250),  # (min, max)
+    #"default_note_duration":0.25,
     }
     config = TokenizerConfig(**TOKENIZER_PARAMS)
     midi_tokenizer = REMI(config)
@@ -174,6 +175,8 @@ def main():
 
 if __name__ == "__main__":
     test_data_loc = "test_chords_edited.csv"
-    bass_first = False
     epoch_to_load = 400
+    #bass_first = False
+    #main()
+    bass_first = False
     main()

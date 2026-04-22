@@ -58,14 +58,14 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     encoder = ChordEncoder(
         chord_tokenizer.get_vocab_size(),
-        d_model=256,
+        d_model=512,
         num_layers=1,
         nhead=2
     )
 
     decoder = RemiDecoder(
         len(bass_tokenizer.vocab),
-        d_model=256,
+        d_model=512,
         num_layers=6,
         nhead=8,
         include_linear_head=False
@@ -75,7 +75,7 @@ def main():
     model = Chord2JointDecoderMidiTransformer(encoder = encoder, decoder = decoder, d_model = decoder.d_model, vocab_size=decoder.vocab_size)
 
     max_length = 128
-    checkpoint = torch.load(f"chord2jointdecoder_train_checkpoints/chord2jointdecoder_epoch_{epoch_to_load}.pt", map_location=device)
+    checkpoint = torch.load(f"chord2jointdecoder_large_train_checkpoints/chord2jointdecoder_epoch_{epoch_to_load}.pt", map_location=device)#torch.load(f"chord2jointdecoder_train_checkpoints/chord2jointdecoder_epoch_{epoch_to_load}.pt", map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     model.to(device)
@@ -89,12 +89,16 @@ def main():
         output_csv_path="test_joint.csv"
     )
     print("Test data (chord progressions) loaded!")
+    #
+    # os.makedirs(f"chord2jointdecoder_samples", exist_ok=True)
+    # os.makedirs(f"chord2jointdecoder_samples/generated_midis_{epoch_to_load}", exist_ok=True)
+    # os.makedirs(f"chord2jointdecoder_samples/generated_midis_{epoch_to_load}/bass", exist_ok=True)
+    # os.makedirs(f"chord2jointdecoder_samples/generated_midis_{epoch_to_load}/melody", exist_ok=True)
 
-    #os.makedirs(f"token_distribution/epoch_{epoch_to_load}", exist_ok=True)
-    os.makedirs(f"chord2jointdecoder_samples", exist_ok=True)
-    os.makedirs(f"chord2jointdecoder_samples/generated_midis_{epoch_to_load}", exist_ok=True)
-    os.makedirs(f"chord2jointdecoder_samples/generated_midis_{epoch_to_load}/bass", exist_ok=True)
-    os.makedirs(f"chord2jointdecoder_samples/generated_midis_{epoch_to_load}/melody", exist_ok=True)
+    os.makedirs(f"chord2jointdecoder_large_samples", exist_ok=True)
+    os.makedirs(f"chord2jointdecoder_large_samples/generated_midis_{epoch_to_load}", exist_ok=True)
+    os.makedirs(f"chord2jointdecoder_large_samples/generated_midis_{epoch_to_load}/bass", exist_ok=True)
+    os.makedirs(f"chord2jointdecoder_large_samples/generated_midis_{epoch_to_load}/melody", exist_ok=True)
 
     print("START GENERATING..")
     for idx, row in test_data.iterrows():
@@ -132,7 +136,8 @@ def main():
         )
         name = row['long_name']
 
-        path = f"chord2jointdecoder_samples/generated_midis_{epoch_to_load}/bass/{name}_generated.mid"
+        #path = f"chord2jointdecoder_samples/generated_midis_{epoch_to_load}/bass/{name}_generated.mid"
+        path = f"chord2jointdecoder_large_samples/generated_midis_{epoch_to_load}/bass/{name}_generated.mid"
         convert_to_midi_files(
             bass_generated_ids,
             bass_tokenizer,
@@ -140,7 +145,8 @@ def main():
             path
         )
 
-        path = f"chord2jointdecoder_samples/generated_midis_{epoch_to_load}/melody/{name}_generated.mid"
+        #path = f"chord2jointdecoder_samples/generated_midis_{epoch_to_load}/melody/{name}_generated.mid"
+        path = f"chord2jointdecoder_large_samples/generated_midis_{epoch_to_load}/melody/{name}_generated.mid"
         convert_to_midi_files(
             melody_generated_ids,
             melody_tokenizer,
