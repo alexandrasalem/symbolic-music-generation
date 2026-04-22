@@ -182,6 +182,151 @@ class RemiDecoder(nn.Module):
         choice = torch.multinomial(filtered_probs, 1)
         return filtered_idx[choice].item()
 
+
+class SymmetricRemiLayer(nn.Module):
+    """
+    One decoder layer with **bidirectional** voice cross-attention.
+    Used inside both bass and melody stacks.
+    """
+    def __init__(self, d_model, nhead, dropout=0.1):
+        super().__init__()
+        # 1. self-attention (causal)
+        self.self_attn   = nn.MultiheadAttention(d_model, nhead,
+                                                 dropout=dropout,
+                                                 batch_first=True)
+        # 2. cross-attention to chord memory
+        self.cross_chord = nn.MultiheadAttention(d_model, nhead,
+                                                 dropout=dropout,
+                                                 batch_first=True)
+        # 3. cross-attention to the **other** voice (NO causal mask)
+        self.cross_voice = nn.MultiheadAttention(d_model, nhead,
+                                                 dropout=dropout,
+                                                 batch_first=True)
+
+        self.norm_s = nn.LayerNorm(d_model)
+        self.norm_c = nn.LayerNorm(d_model)
+        self.norm_v = nn.LayerNorm(d_model)
+        self.ffn  = nn.Sequential(
+            nn.Linear(d_model, 4*d_model),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(4*d_model, d_model)
+        )
+        self.norm_f = nn.LayerNorm(d_model)
+
+    def forward(self, x, chord_mem, other_voice,
+                self_attn_mask=None, cross_padding_mask=None):
+        # 1. self
+        x = x + self.self_attn(x, x, x, attn_mask=self_attn_mask,
+                               key_padding_mask=cross_padding_mask)[0]
+        x = self.norm_s(x)
+        # 2. chord
+        x = x + self.cross_chord(x, chord_mem, chord_mem,
+                                 key_padding_mask=cross_padding_mask)[0]
+        x = self.norm_c(x)
+        # 3. sibling voice  (NO mask -> full attention)
+        x = x + self.cross_voice(x, other_voice, other_voice)[0]
+        x = self.norm_v(x)
+        # 4. ffn
+        return self.norm_f(x + self.ffn(x))
+
+
+class SymmetricRemiDecoder(nn.Module):
+    """
+    Decoder that produces **both** bass and melody logits **layer-synced**.
+    Replace your old `RemiDecoder` with this one; API identical.
+    """
+    def __init__(self, vocab_size, d_model=128, nhead=4, num_layers=3,
+                 dropout=0.2):
+        super().__init__()
+        self.d_model = d_model
+        self.vocab_size = vocab_size
+
+        # shared embeddings for both voices (REMI tokens)
+        self.token_embedding = nn.Embedding(vocab_size, d_model)
+        self.pos_encoder     = PositionalEncoding(d_model, max_len=2048)
+
+        # **two** identical stacks
+        self.bass_layers  = nn.ModuleList(
+            [SymmetricRemiLayer(d_model, nhead, dropout) for _ in range(num_layers)]
+        )
+        self.melody_layers = nn.ModuleList(
+            [SymmetricRemiLayer(d_model, nhead, dropout) for _ in range(num_layers)]
+        )
+
+        # separate heads
+        self.bass_head  = nn.Linear(d_model, vocab_size)
+        self.melody_head = nn.Linear(d_model, vocab_size)
+
+    def forward(self, bass_ids, melody_ids,
+                chord_memory,
+                bass_mask=None, melody_mask=None):
+        """
+        bass_ids / melody_ids : [B, T]  (already shifted right)
+        chord_memory          : [B, S, d]  from ChordEncoder
+        returns  logits_bass, logits_melody  [B, T, V]
+        """
+        B, T = bass_ids.shape
+        # embed + pos
+        bass_x   = self.pos_encoder(self.token_embedding(bass_ids))
+        melody_x = self.pos_encoder(self.token_embedding(melody_ids))
+
+        # causal mask for self-attention inside each voice
+        tgt_mask = Transformer.generate_square_subsequent_mask(T).to(bass_ids.device)
+
+        # layer-wise locked forward
+        for bass_layer, melody_layer in zip(self.bass_layers, self.melody_layers):
+            bass_x   = bass_layer(bass_x, chord_memory, melody_x,
+                                  self_attn_mask=tgt_mask,
+                                  cross_padding_mask=None)
+            melody_x = melody_layer(melody_x, chord_memory, bass_x,
+                                    self_attn_mask=tgt_mask,
+                                    cross_padding_mask=None)
+
+        logits_bass   = self.bass_head(bass_x)
+        logits_melody = self.melody_head(melody_x)
+        return logits_bass, logits_melody
+
+    # keep your old generate() but call **both** heads each step
+    @torch.no_grad()
+    def generate(self, chord_memory,
+                 bos_id, eos_id, max_len=128,
+                 decoding_strategy='top_p', top_p=0.9, device=None):
+        device = device or chord_memory.device
+        bass_toks   = [bos_id]
+        melody_toks = [bos_id]
+
+        for _ in range(1, max_len):
+            b_in = torch.tensor([bass_toks], dtype=torch.long, device=device)
+            m_in = torch.tensor([melody_toks], dtype=torch.long, device=device)
+
+            logits_b, logits_m = self.forward(b_in, m_in, chord_memory)
+
+            # sample next token for each voice
+            next_b   = self._sample(logits_b[0, -1], strategy=decoding_strategy, p=top_p)
+            next_m   = self._sample(logits_m[0, -1], strategy=decoding_strategy, p=top_p)
+
+            bass_toks.append(next_b)
+            melody_toks.append(next_m)
+
+            if next_b == eos_id and next_m == eos_id:
+                break
+        return bass_toks, melody_toks
+
+    def _sample(self, logits, strategy, p):
+        if strategy == 'greedy':
+            return int(logits.argmax())
+        # top-p
+        probs = F.softmax(logits, dim=-1)
+        sorted_probs, sorted_idx = torch.sort(probs, descending=True)
+        cum = torch.cumsum(sorted_probs, dim=-1)
+        mask = cum <= p
+        mask[0] = True
+        filtered = sorted_probs[mask]
+        filtered /= filtered.sum()
+        choice = torch.multinomial(filtered, 1)
+        return sorted_idx[mask][choice].item()
+
 class SequentialRemiDecoder(nn.Module):
     def __init__(self, vocab_size, d_model=128, nhead=4, num_layers=3, dropout=0.2):
         super().__init__()
@@ -287,7 +432,6 @@ class Chord2MidiTransformer(nn.Module):
         )
 
         return generated_ids
-
 
 class Chord2JointMidiTransformer(nn.Module):
 
@@ -546,3 +690,44 @@ class Chord2SequentialMidiTransformer(nn.Module):
                 if next_second == second_eos_id:
                     break
         return first_generated, second_generated
+
+class Chord2SymmetricMidiTransformer(nn.Module):
+    def __init__(self, encoder, symmetric_decoder):
+        super().__init__()
+        self.encoder = encoder
+        self.decoder = symmetric_decoder
+        # project chord dim → decoder dim (if different)
+        self.mem_proj = nn.Linear(
+            encoder.token_embedding.embedding_dim,
+            symmetric_decoder.d_model
+        )
+
+    def forward(self,
+                input_ids, attention_mask,
+                bass_tgt, melody_tgt,
+                bass_tgt_key_padding_mask=None,
+                melody_tgt_key_padding_mask=None):
+        with torch.no_grad():
+            enc = self.encoder(input_ids, attention_mask)   # [B, S, d_enc]
+        memory = self.mem_proj(enc)                        # [B, S, d_dec]
+
+        logits_bass, logits_melody = self.decoder(
+            bass_tgt, melody_tgt, memory,
+            bass_mask=bass_tgt_key_padding_mask,
+            melody_mask=melody_tgt_key_padding_mask)
+        return logits_bass, logits_melody
+
+    @torch.no_grad()
+    def generate(self, input_ids, attention_mask,
+                 bos_id, eos_id, max_len=128,
+                 decoding_strategy='top_p', top_p=0.9, device=None):
+        device = device or input_ids.device
+        enc = self.encoder(input_ids, attention_mask)
+        memory = self.mem_proj(enc)
+        return self.decoder.generate(
+            memory,
+            bos_id=bos_id, eos_id=eos_id,
+            max_len=max_len,
+            decoding_strategy=decoding_strategy,
+            top_p=top_p,
+            device=device)
