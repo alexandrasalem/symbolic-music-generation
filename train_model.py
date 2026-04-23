@@ -58,8 +58,8 @@ def main():
         my_chords_csv_path = "train_chords_edited.csv"
         my_output_csv_path = "train_joint.csv"
         checkpoints_loc = f'chord2{bass_or_melody}_train_checkpoints'
-    elif piece_or_theme == "melody":
-        logs_filesname = f'chord2{bass_or_melody}_train_log.log'
+    elif piece_or_theme == "theme":
+        logs_filesname = f'chord2{bass_or_melody}_theme_train_log.log'
         my_chords_csv_path = "train_themes_held_out_chords_edited.csv"
         my_output_csv_path = "train_joint_themes_held_out.csv"
         checkpoints_loc = f'chord2{bass_or_melody}_theme_train_checkpoints'
