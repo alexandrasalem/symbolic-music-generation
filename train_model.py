@@ -17,8 +17,8 @@ from tokenizers import Tokenizer
 import argparse
 
 parser = argparse.ArgumentParser(description="Arguments for controlling training independent.")
-parser.add_argument("bass_or_melody", default="bass", help="which voice to run")
-parser.add_argument("piece_or_theme", default="piece", help="which train/test split")
+parser.add_argument("--bass_or_melody", choices=["bass", "melody"], help="which voice to run")
+parser.add_argument("--piece_or_theme", choices=["piece", "theme"], help="which train/test split")
 args = parser.parse_args()
 
 bass_or_melody = args.bass_or_melody
