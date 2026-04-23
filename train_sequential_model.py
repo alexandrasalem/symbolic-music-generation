@@ -213,7 +213,9 @@ def main():
             scheduler.step()
 
             epoch_loss += loss.item()
-        print(f"Epoch {epoch} — Loss: {epoch_loss / len(train_dataloader) * batch_size:.4f}")
+        log_msg = f"Epoch {epoch} — Loss: {epoch_loss / len(train_dataloader) * batch_size:.4f}"
+        print(log_msg)
+        logging.info(log_msg)
 
         if epoch % save_every == 0:
             checkpoint_path = f'{checkpoints_loc}/{checkpoints_file_stem}_epoch_{epoch}.pt'
