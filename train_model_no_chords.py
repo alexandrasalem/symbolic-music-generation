@@ -5,26 +5,76 @@ from pathlib import Path
 from miditok import REMI, TokenizerConfig
 from miditok.pytorch_data import DatasetMIDI, DataCollator
 from torch.utils.data import DataLoader
-# from utils import load_pretrain_data, split_pretrain_data, compute_token_type_distribution
 from models import RemiDecoder, ChordEncoder, Chord2MidiTransformer
+from chord_to_midi_dataset import ChordBassMelodyDataset, ChordMidiDataset
 from tqdm import tqdm
 from torch.optim.lr_scheduler import LambdaLR
 import logging
 import os
-#from tqdm.auto import tqdm
 import pandas as pd
-from chord_to_midi_dataset import ChordMidiDataset
-from tokenizers import Tokenizer
+import argparse
 
+
+parser = argparse.ArgumentParser(description="Arguments for controlling training independent.")
+parser.add_argument("--bass_or_melody", choices=["bass", "melody"], help="which voice to run")
+parser.add_argument("--piece_or_theme", choices=["piece", "theme"], help="which train/test split")
+args = parser.parse_args()
+
+bass_or_melody = args.bass_or_melody
+piece_or_theme = args.piece_or_theme
+
+def extract_prefix(filename):
+    # Remove extension and everything after '_simplified'
+    stem = Path(filename).stem
+    return stem.split('_simplified')[0]
+
+def construct_train_df(
+    chords_csv_path,
+    melody_folder,
+    bass_folder,
+    output_csv_path=None
+):
+    df = pd.read_csv(chords_csv_path)
+    melody_files = {extract_prefix(f): str(f.resolve()) for f in Path(melody_folder).glob("*.mid")}
+    bass_files = {extract_prefix(f): str(f.resolve()) for f in Path(bass_folder).glob("*.mid")}
+
+    df["melody_path"] = df["long_name"].map(melody_files)
+    df["bass_path"] = df["long_name"].map(bass_files)
+
+    df = df.dropna(subset=["melody_path", "bass_path"])
+
+    if output_csv_path:
+        df.to_csv(output_csv_path, index=False)
+
+    print(f"Data Length: {len(df)}")
+    return df
 
 def main():
+    # set based on argparse
+    #f"nothingprior2{bass_or_melody}_train_checkpoints/nothingprior2{bass_or_melody}_epoch_{epoch}.pt"
+
+    if piece_or_theme == "piece":
+        logs_filesname = f'nothingprior2{bass_or_melody}_train_log.log'
+        my_chords_csv_path = "train_chords_edited.csv"
+        my_output_csv_path = "train_joint.csv"
+        checkpoints_loc = f'nothingprior2{bass_or_melody}_train_checkpoints'
+        checkpoints_file_stem = f'nothingprior2{bass_or_melody}'
+    elif piece_or_theme == "theme":
+        logs_filesname = f'nothingprior2{bass_or_melody}_theme_train_log.log'
+        my_chords_csv_path = "train_themes_held_out_chords_edited.csv"
+        my_output_csv_path = "train_joint_themes_held_out.csv"
+        checkpoints_loc = f'nothingprior2{bass_or_melody}_theme_train_checkpoints'
+        checkpoints_file_stem = f'nothingprior2{bass_or_melody}_theme'
+    else:
+        raise ValueError(f"Unknown piece or theme type: {piece_or_theme}")
+
     logging.basicConfig(
-        filename=f'nothingprior2{bass_or_melody}_train_log.log',
+        filename=logs_filesname,
         level=logging.INFO,
         format='%(asctime)s — %(levelname)s — %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-    checkpoints_loc = f'nothingprior2{bass_or_melody}_train_checkpoints'
+
     os.makedirs(checkpoints_loc, exist_ok=True)
 
     TOKENIZER_PARAMS = {
@@ -43,7 +93,16 @@ def main():
     config = TokenizerConfig(**TOKENIZER_PARAMS)
     tokenizer = REMI(config)
 
-    midi_paths = list(Path(f"new_simplified_{bass_or_melody}_files_c_midi").resolve().glob("*.mid"))
+    #midi_paths = list(Path(f"new_simplified_{bass_or_melody}_files_c_midi").resolve().glob("*.mid"))
+
+    train_df = construct_train_df(
+        chords_csv_path=my_chords_csv_path,
+        bass_folder="new_simplified_bass_files_c_midi",
+        melody_folder="new_simplified_melody_files_c_midi",
+        output_csv_path=my_output_csv_path
+    )
+
+    midi_paths = list(train_df[f'{bass_or_melody}_path'])
 
     dataset = DatasetMIDI(
         files_paths=midi_paths,
@@ -53,13 +112,6 @@ def main():
         eos_token_id=tokenizer["EOS_None"],
     )
 
-    # val_dataset = DatasetMIDI(
-    #     files_paths=val_midi_paths,
-    #     tokenizer=tokenizer,
-    #     max_seq_len=256,
-    #     bos_token_id=tokenizer['BOS_None'],
-    #     eos_token_id=tokenizer["EOS_None"],
-    # )
 
     batch_size = 8
     collator = DataCollator(tokenizer.pad_token_id)
@@ -99,7 +151,7 @@ def main():
     # print(f"Loaded checkpoints! starting training from EPOCH: {start_epoch}: ")
 
     start_epoch = 0
-    num_epochs = 1#401
+    num_epochs = 401
     save_every = 50
     val_every = 50
     log_interval = 1000
@@ -147,7 +199,7 @@ def main():
         #                      max_len=512)  # generate samples to see token distribution
         #
         if epoch % save_every == 0:# and epoch != 0:
-            checkpoint_path = f"nothingprior2{bass_or_melody}_train_checkpoints/nothingprior2{bass_or_melody}_epoch_{epoch}.pt"
+            checkpoint_path = f'{checkpoints_loc}/{checkpoints_file_stem}_epoch_{epoch}.pt'
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.module.state_dict() if isinstance(model,
@@ -158,5 +210,4 @@ def main():
             print(f"Saved checkpoint: {checkpoint_path}")
 
 if __name__ == "__main__":
-    bass_or_melody = 'bass'
     main()
