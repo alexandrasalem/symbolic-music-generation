@@ -3,18 +3,24 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 from miditok import REMI, TokenizerConfig
-from miditok.pytorch_data import DatasetMIDI, DataCollator
 from torch.utils.data import DataLoader
-# from utils import load_pretrain_data, split_pretrain_data, compute_token_type_distribution
 from models import RemiDecoder, SequentialRemiDecoder, ChordEncoder, Chord2SequentialMidiTransformer
 from tqdm import tqdm
 from torch.optim.lr_scheduler import LambdaLR
 import logging
 import os
-#from tqdm.auto import tqdm
 import pandas as pd
 from chord_to_midi_dataset import ChordBassMelodyDataset, ChordMidiDataset
 from tokenizers import Tokenizer
+import argparse
+
+parser = argparse.ArgumentParser(description="Arguments for controlling training independent.")
+parser.add_argument("--bass_or_melody", choices=["bass", "melody"], help="which voice to run")
+parser.add_argument("--piece_or_theme", choices=["piece", "theme"], help="which train/test split")
+args = parser.parse_args()
+
+bass_or_melody = args.bass_or_melody
+piece_or_theme = args.piece_or_theme
 
 def extract_prefix(filename):
     # Remove extension and everything after '_simplified'
@@ -44,18 +50,29 @@ def construct_train_df(
 
 
 def main():
-    if bass_first:
-        bass_or_melody = 'bass_first'
+    # set based on argparse
+    if piece_or_theme == "piece":
+        logs_filesname = f'chord2sequential{bass_or_melody}_first_train_log.log'
+        my_chords_csv_path = "train_chords_edited.csv"
+        my_output_csv_path = "train_joint.csv"
+        checkpoints_loc = f'chord2sequential{bass_or_melody}_first_train_checkpoints'
+        checkpoints_file_stem = f'chord2sequential{bass_or_melody}_first'
+    elif piece_or_theme == "theme":
+        logs_filesname = f'chord2sequential{bass_or_melody}_first_theme_train_log.log'
+        my_chords_csv_path = "train_themes_held_out_chords_edited.csv"
+        my_output_csv_path = "train_joint_themes_held_out.csv"
+        checkpoints_loc = f'chord2sequential{bass_or_melody}_first_theme_train_checkpoints'
+        checkpoints_file_stem = f'chord2sequential{bass_or_melody}_first_theme'
     else:
-        bass_or_melody = 'melody_first'
+        raise ValueError(f"Unknown piece or theme type: {piece_or_theme}")
+
     logging.basicConfig(
-        filename=f'chord2sequential{bass_or_melody}_train_log.log',
+        filename=logs_filesname,
         level=logging.INFO,
         format='%(asctime)s — %(levelname)s — %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    checkpoints_loc = f'chord2sequential{bass_or_melody}_train_checkpoints'
     os.makedirs(checkpoints_loc, exist_ok=True)
 
     TOKENIZER_PARAMS = {
@@ -78,10 +95,10 @@ def main():
     chord_tokenizer = Tokenizer.from_file("chord_tokenizer.json")
 
     train_df = construct_train_df(
-        chords_csv_path="train_chords_edited.csv",
+        chords_csv_path=my_chords_csv_path,
         bass_folder="new_simplified_bass_files_c_midi",
         melody_folder="new_simplified_melody_files_c_midi",
-        output_csv_path="train_joint.csv"
+        output_csv_path=my_output_csv_path
     )
 
     train_dataset = ChordBassMelodyDataset(
@@ -163,7 +180,7 @@ def main():
 
 
 
-            if bass_first:
+            if bass_or_melody == "bass":
                 first_tgt_key_padding_mask = (bass_input == bass_tokenizer.pad_token_id)
                 second_tgt_key_padding_mask = (melody_input == melody_tokenizer.pad_token_id)
                 bass_logits, melody_logits = model(
@@ -199,7 +216,7 @@ def main():
         print(f"Epoch {epoch} — Loss: {epoch_loss / len(train_dataloader) * batch_size:.4f}")
 
         if epoch % save_every == 0:
-            checkpoint_path = f"{checkpoints_loc}/chord2sequential{bass_or_melody}_epoch_{epoch}.pt"
+            checkpoint_path = f'{checkpoints_loc}/{checkpoints_file_stem}_epoch_{epoch}.pt'
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
@@ -209,5 +226,4 @@ def main():
             print(f"Saved checkpoint: {checkpoint_path}")
 
 if __name__ == "__main__":
-    bass_first = True
     main()
