@@ -58,11 +58,13 @@ def main():
         my_chords_csv_path = "train_chords_edited.csv"
         my_output_csv_path = "train_joint.csv"
         checkpoints_loc = f'chord2{bass_or_melody}_train_checkpoints'
+        checkpoints_file_stem = f'chord2{bass_or_melody}'
     elif piece_or_theme == "theme":
         logs_filesname = f'chord2{bass_or_melody}_theme_train_log.log'
         my_chords_csv_path = "train_themes_held_out_chords_edited.csv"
         my_output_csv_path = "train_joint_themes_held_out.csv"
         checkpoints_loc = f'chord2{bass_or_melody}_theme_train_checkpoints'
+        checkpoints_file_stem = f'chord2{bass_or_melody}_theme'
     else:
         raise ValueError(f"Unknown piece or theme type: {piece_or_theme}")
 
@@ -196,7 +198,7 @@ def main():
         logging.info(log_msg)
 
         if epoch % save_every == 0:# and epoch != 0:
-            checkpoint_path = f"{checkpoints_loc}/chord2{bass_or_melody}_epoch_{epoch}.pt"
+            checkpoint_path = f'{checkpoints_loc}/{checkpoints_file_stem}_epoch_{epoch}.pt'
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.module.state_dict() if isinstance(model,
