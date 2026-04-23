@@ -3,18 +3,22 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 from miditok import REMI, TokenizerConfig
-from miditok.pytorch_data import DatasetMIDI, DataCollator
 from torch.utils.data import DataLoader
-# from utils import load_pretrain_data, split_pretrain_data, compute_token_type_distribution
 from models import SymmetricRemiDecoder, ChordEncoder, Chord2SymmetricMidiTransformer
 from torch.optim.lr_scheduler import LambdaLR
 import logging
 import os
-#from tqdm.auto import tqdm
 import pandas as pd
 from chord_to_midi_dataset import ChordBassMelodyDataset
 from tokenizers import Tokenizer
 from tqdm import tqdm
+import argparse
+
+parser = argparse.ArgumentParser(description="Arguments for controlling training independent.")
+parser.add_argument("--piece_or_theme", choices=["piece", "theme"], help="which train/test split")
+args = parser.parse_args()
+
+piece_or_theme = args.piece_or_theme
 
 
 def extract_prefix(filename):
@@ -44,14 +48,29 @@ def construct_train_df(
     return df
 
 def main():
+    # set based on argparse
+    if piece_or_theme == "piece":
+        logs_filesname = f'chord2symmetricdecoder_train_log.log'
+        my_chords_csv_path = "train_chords_edited.csv"
+        my_output_csv_path = "train_joint.csv"
+        checkpoints_loc = f'chord2symmetricdecoder_train_checkpoints'
+        checkpoints_file_stem = f'chord2symmetricdecoder'
+    elif piece_or_theme == "theme":
+        logs_filesname = f'chord2symmetricdecoder_theme_train_log.log'
+        my_chords_csv_path = "train_themes_held_out_chords_edited.csv"
+        my_output_csv_path = "train_joint_themes_held_out.csv"
+        checkpoints_loc = f'chord2symmetricdecoder_theme_train_checkpoints'
+        checkpoints_file_stem = f'chord2symmetricdecoder_theme'
+    else:
+        raise ValueError(f"Unknown piece or theme type: {piece_or_theme}")
+
     logging.basicConfig(
-        filename=f'chord2symmetricdecoder_train_log.log',
+        filename=logs_filesname,
         level=logging.INFO,
         format='%(asctime)s — %(levelname)s — %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    checkpoints_loc = f'chord2symmetricdecoder_train_checkpoints'
     os.makedirs(checkpoints_loc, exist_ok=True)
 
     TOKENIZER_PARAMS = {
@@ -73,21 +92,11 @@ def main():
     chord_tokenizer = Tokenizer.from_file("chord_tokenizer.json")
 
 
-    #bass_midis_we_have = list(Path(f'new_simplified_bass_files_c_midi_equal_length').resolve().glob('*.mid'))
-    #bass_midis_we_have = [item.name[:-22] for item in bass_midis_we_have] # changed from 22 for melody
-    #melody_midis_we_have = list(Path(f'new_simplified_melody_files_c_midi_equal_length').resolve().glob('*.mid'))
-    #melody_midis_we_have = [item.name[:-24] for item in melody_midis_we_have] # changed from 22 for melody
-
-    #bass_and_melody_midis_we_have = list(set(melody_midis_we_have) & set(bass_midis_we_have))
-    #train_df = pd.read_csv("train_chords_edited.csv")
-    #train_df = train_df[train_df["long_name"].isin(bass_and_melody_midis_we_have)]
-
-
     train_df = construct_train_df(
-        chords_csv_path="train_chords_edited.csv",
+        chords_csv_path=my_chords_csv_path,
         bass_folder="new_simplified_bass_files_c_midi",
         melody_folder="new_simplified_melody_files_c_midi",
-        output_csv_path="train_joint.csv"
+        output_csv_path=my_output_csv_path
     )
 
     train_dataset = ChordBassMelodyDataset(
@@ -99,18 +108,6 @@ def main():
     )
     batch_size = 8
     train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size)
-
-    # this needs to be updated for joint model--will what Shayan added work?
-    # train_dataset = ChordBassMelodyDataset(
-    #     train_df,
-    #     midis_path=midis_path,
-    #     midi_tokenizer=midi_tokenizer,
-    #     chord_tokenizer=chord_tokenizer,
-    #     bass_or_melody=bass_or_melody,
-    #     max_length=128
-    # )
-    # batch_size = 8
-    # train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size)
 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -211,9 +208,10 @@ def main():
             epoch_loss += loss.item()
         log_msg = f"Epoch {epoch} — Loss: {epoch_loss / len(train_dataloader) * batch_size:.4f}"
         print(log_msg)
+        logging.info(log_msg)
 
         if epoch % save_every == 0:# and epoch != 0:
-            checkpoint_path = f"{checkpoints_loc}/chord2symmetricdecoder_epoch_{epoch}.pt"
+            checkpoint_path = f'{checkpoints_loc}/{checkpoints_file_stem}_epoch_{epoch}.pt'
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.module.state_dict() if isinstance(model,
