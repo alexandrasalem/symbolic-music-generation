@@ -5,7 +5,6 @@ from pathlib import Path
 from miditok import REMI, TokenizerConfig
 from miditok.pytorch_data import DatasetMIDI, DataCollator
 from torch.utils.data import DataLoader
-# from utils import load_pretrain_data, split_pretrain_data, compute_token_type_distribution
 from models import RemiDecoder, ChordEncoder, Chord2MidiTransformer
 from tqdm import tqdm
 from torch.optim.lr_scheduler import LambdaLR
@@ -15,6 +14,15 @@ import os
 import pandas as pd
 from chord_to_midi_dataset import ChordBassMelodyDataset, ChordMidiDataset
 from tokenizers import Tokenizer
+import argparse
+
+parser = argparse.ArgumentParser(description="Arguments for controlling training independent.")
+parser.add_argument("bass_or_melody", default="bass", help="which voice to run")
+parser.add_argument("piece_or_theme", default="piece", help="which train/test split")
+args = parser.parse_args()
+
+bass_or_melody = args.bass_or_melody
+piece_or_theme = args.piece_or_theme
 
 def extract_prefix(filename):
     # Remove extension and everything after '_simplified'
@@ -44,14 +52,28 @@ def construct_train_df(
 
 
 def main():
+    # set based on argparse
+    if piece_or_theme == "piece":
+        logs_filesname = f'chord2{bass_or_melody}_train_log.log'
+        my_chords_csv_path = "train_chords_edited.csv"
+        my_output_csv_path = "train_joint.csv"
+        checkpoints_loc = f'chord2{bass_or_melody}_train_checkpoints'
+    elif piece_or_theme == "melody":
+        logs_filesname = f'chord2{bass_or_melody}_train_log.log'
+        my_chords_csv_path = "train_themes_held_out_chords_edited.csv"
+        my_output_csv_path = "train_joint_themes_held_out.csv"
+        checkpoints_loc = f'chord2{bass_or_melody}_theme_train_checkpoints'
+    else:
+        raise ValueError(f"Unknown piece or theme type: {piece_or_theme}")
+
     logging.basicConfig(
-        filename=f'chord2{bass_or_melody}_train_log.log',
+        filename=logs_filesname,
         level=logging.INFO,
         format='%(asctime)s — %(levelname)s — %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    checkpoints_loc = f'chord2{bass_or_melody}_train_checkpoints'
+
     os.makedirs(checkpoints_loc, exist_ok=True)
 
     TOKENIZER_PARAMS = {
@@ -71,21 +93,15 @@ def main():
     midi_tokenizer = REMI(config)
     chord_tokenizer = Tokenizer.from_file("chord_tokenizer.json")
 
-    # train_df = pd.read_csv("train_chords_edited.csv")
-    # midis_we_have = list(Path(f'new_simplified_{bass_or_melody}_files_c_midi_equal_length').resolve().glob('*.mid'))
-    # midis_we_have = [item.name[:-22] for item in midis_we_have] # changed from 22 for melody
-    # train_df = train_df[train_df["long_name"].isin(midis_we_have)]
-    # midis_path = f"new_simplified_{bass_or_melody}_files_c_midi_equal_length"
 
     train_df = construct_train_df(
-        chords_csv_path="train_chords_edited.csv",
+        chords_csv_path=my_chords_csv_path,
         bass_folder="new_simplified_bass_files_c_midi",
         melody_folder="new_simplified_melody_files_c_midi",
-        output_csv_path="train_joint.csv"
+        output_csv_path=my_output_csv_path
     )
 
 
-    # use same full dataset object for simplicity/comparison?
     train_dataset = ChordBassMelodyDataset(
         dataframe=train_df,
         chord_tokenizer=chord_tokenizer,
@@ -177,6 +193,7 @@ def main():
             epoch_loss += loss.item()
         log_msg = f"Epoch {epoch} — Loss: {epoch_loss / len(train_dataloader) * batch_size:.4f}"
         print(log_msg)
+        logging.info(log_msg)
 
         if epoch % save_every == 0:# and epoch != 0:
             checkpoint_path = f"{checkpoints_loc}/chord2{bass_or_melody}_epoch_{epoch}.pt"
@@ -194,5 +211,4 @@ def main():
         # print(f"Epoch {epoch} — Loss: {avg_loss:.4f}")
 
 if __name__ == "__main__":
-    bass_or_melody = "bass"
     main()
