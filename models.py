@@ -279,6 +279,7 @@ class SymmetricRemiDecoder(nn.Module):
             bass_x   = bass_layer(bass_x, chord_memory, melody_x,
                                   self_attn_mask=tgt_mask,
                                   cross_padding_mask=None)
+            # bass is new, already updated
             melody_x = melody_layer(melody_x, chord_memory, bass_x,
                                     self_attn_mask=tgt_mask,
                                     cross_padding_mask=None)
@@ -390,8 +391,8 @@ class Chord2MidiTransformer(nn.Module):
         tgt,
         tgt_key_padding_mask=None,
     ):
-        with torch.no_grad():
-            encoder_out = self.encoder(input_ids, attention_mask)
+
+        encoder_out = self.encoder(input_ids, attention_mask)
 
         memory = self.memory_proj(encoder_out) # (B, T, d_dec)
 
@@ -460,8 +461,7 @@ class Chord2JointMidiTransformer(nn.Module):
                 bass_tgt_key_padding_mask=None,
                 melody_tgt_key_padding_mask=None,
     ):
-        with torch.no_grad():
-            encoder_out = self.encoder(input_ids, attention_mask)
+        encoder_out = self.encoder(input_ids, attention_mask)
 
         memory = self.memory_proj(encoder_out) # (B, T, d_dec)
 
@@ -548,8 +548,8 @@ class Chord2JointDecoderMidiTransformer(nn.Module):
                 bass_tgt_key_padding_mask=None,
                 melody_tgt_key_padding_mask=None,
     ):
-        with torch.no_grad():
-            encoder_out = self.encoder(input_ids, attention_mask)
+
+        encoder_out = self.encoder(input_ids, attention_mask)
 
         memory = self.memory_proj(encoder_out) # (B, T, d_dec)
 
@@ -707,8 +707,7 @@ class Chord2SymmetricMidiTransformer(nn.Module):
                 bass_tgt, melody_tgt,
                 bass_tgt_key_padding_mask=None,
                 melody_tgt_key_padding_mask=None):
-        with torch.no_grad():
-            enc = self.encoder(input_ids, attention_mask)   # [B, S, d_enc]
+        enc = self.encoder(input_ids, attention_mask)   # [B, S, d_enc]
         memory = self.mem_proj(enc)                        # [B, S, d_dec]
 
         logits_bass, logits_melody = self.decoder(
