@@ -276,11 +276,11 @@ class SymmetricRemiDecoder(nn.Module):
 
         # layer-wise locked forward
         for bass_layer, melody_layer in zip(self.bass_layers, self.melody_layers):
+            temp_bass_x = bass_x
             bass_x   = bass_layer(bass_x, chord_memory, melody_x,
                                   self_attn_mask=tgt_mask,
                                   cross_padding_mask=None)
-            # bass is new, already updated
-            melody_x = melody_layer(melody_x, chord_memory, bass_x,
+            melody_x = melody_layer(melody_x, chord_memory, temp_bass_x,
                                     self_attn_mask=tgt_mask,
                                     cross_padding_mask=None)
 
