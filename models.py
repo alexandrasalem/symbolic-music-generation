@@ -215,14 +215,13 @@ class SymmetricRemiLayer(nn.Module):
         self.norm_f = nn.LayerNorm(d_model)
 
     def forward(self, x, chord_mem, other_voice,
-                self_attn_mask=None, cross_padding_mask=None):
+                self_attn_causal_mask=None, self_padding_mask=None):
         # 1. self
-        x = x + self.self_attn(x, x, x, attn_mask=self_attn_mask,
-                               key_padding_mask=cross_padding_mask)[0]
+        x = x + self.self_attn(x, x, x, attn_mask=self_attn_causal_mask,
+                               key_padding_mask=self_padding_mask)[0]
         x = self.norm_s(x)
         # 2. chord
-        x = x + self.cross_chord(x, chord_mem, chord_mem,
-                                 key_padding_mask=cross_padding_mask)[0]
+        x = x + self.cross_chord(x, chord_mem, chord_mem)[0]
         x = self.norm_c(x)
         # 3. sibling voice  (NO mask -> full attention)
         x = x + self.cross_voice(x, other_voice, other_voice)[0]
@@ -260,7 +259,7 @@ class SymmetricRemiDecoder(nn.Module):
 
     def forward(self, bass_ids, melody_ids,
                 chord_memory,
-                bass_mask=None, melody_mask=None):
+                bass_tgt_key_padding_mask=None, melody_tgt_key_padding_mask=None):
         """
         bass_ids / melody_ids : [B, T]  (already shifted right)
         chord_memory          : [B, S, d]  from ChordEncoder
@@ -272,17 +271,23 @@ class SymmetricRemiDecoder(nn.Module):
         melody_x = self.pos_encoder(self.token_embedding(melody_ids))
 
         # causal mask for self-attention inside each voice
-        tgt_mask = Transformer.generate_square_subsequent_mask(T).to(bass_ids.device)
+        bass_tgt_mask = Transformer.generate_square_subsequent_mask(T).to(bass_ids.device)
+        melody_tgt_mask = Transformer.generate_square_subsequent_mask(T).to(melody_ids.device)
+
 
         # layer-wise locked forward
         for bass_layer, melody_layer in zip(self.bass_layers, self.melody_layers):
             temp_bass_x = bass_x
-            bass_x   = bass_layer(bass_x, chord_memory, melody_x,
-                                  self_attn_mask=tgt_mask,
-                                  cross_padding_mask=None)
-            melody_x = melody_layer(melody_x, chord_memory, temp_bass_x,
-                                    self_attn_mask=tgt_mask,
-                                    cross_padding_mask=None)
+            bass_x   = bass_layer(x = bass_x,
+                                  chord_mem = chord_memory,
+                                  other_voice = melody_x,
+                                  self_attn_causal_mask=bass_tgt_mask,
+                                  self_padding_mask=bass_tgt_key_padding_mask)
+            melody_x = melody_layer(x=melody_x,
+                                    chord_mem=chord_memory,
+                                    other_voice=temp_bass_x,
+                                    self_attn_causal_mask=melody_tgt_mask,
+                                    self_padding_mask=melody_tgt_key_padding_mask)
 
         logits_bass   = self.bass_head(bass_x)
         logits_melody = self.melody_head(melody_x)
@@ -703,25 +708,27 @@ class Chord2SymmetricMidiTransformer(nn.Module):
         )
 
     def forward(self,
-                input_ids, attention_mask,
+                chord_input_ids, chord_attention_mask,
                 bass_tgt, melody_tgt,
                 bass_tgt_key_padding_mask=None,
                 melody_tgt_key_padding_mask=None):
-        enc = self.encoder(input_ids, attention_mask)   # [B, S, d_enc]
+        enc = self.encoder(chord_input_ids, chord_attention_mask)   # [B, S, d_enc]
         memory = self.mem_proj(enc)                        # [B, S, d_dec]
 
         logits_bass, logits_melody = self.decoder(
-            bass_tgt, melody_tgt, memory,
-            bass_mask=bass_tgt_key_padding_mask,
-            melody_mask=melody_tgt_key_padding_mask)
+            bass_ids = bass_tgt,
+            melody_ids = melody_tgt,
+            chord_memory = memory,
+            bass_tgt_key_padding_mask=bass_tgt_key_padding_mask,
+            melody_tgt_key_padding_mask=melody_tgt_key_padding_mask)
         return logits_bass, logits_melody
 
     @torch.no_grad()
-    def generate(self, input_ids, attention_mask,
+    def generate(self, chord_input_ids, chord_attention_mask,
                  bos_id, eos_id, max_len=128,
                  decoding_strategy='top_p', top_p=0.9, device=None):
-        device = device or input_ids.device
-        enc = self.encoder(input_ids, attention_mask)
+        device = device or chord_input_ids.device
+        enc = self.encoder(chord_input_ids, chord_attention_mask)
         memory = self.mem_proj(enc)
         return self.decoder.generate(
             memory,
