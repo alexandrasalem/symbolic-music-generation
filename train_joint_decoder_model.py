@@ -50,13 +50,13 @@ def main():
     # set based on argparse
     if piece_or_theme == "piece":
         logs_filesname = f'chord2jointdecoder_train_log.log'
-        my_chords_csv_path = "train_chords_edited.csv"
+        my_chords_csv_path = "train_chords_edited-key-tranposed.csv"
         my_output_csv_path = "train_joint.csv"
         checkpoints_loc = f'chord2jointdecoder_train_checkpoints'
         checkpoints_file_stem = f'chord2jointdecoder'
     elif piece_or_theme == "theme":
         logs_filesname = f'chord2jointdecoder_theme_train_log.log'
-        my_chords_csv_path = "train_themes_held_out_chords_edited.csv"
+        my_chords_csv_path = "train_themes_held_out_chords_edited-key-tranposed.csv"
         my_output_csv_path = "train_joint_themes_held_out.csv"
         checkpoints_loc = f'chord2jointdecoder_theme_train_checkpoints'
         checkpoints_file_stem = f'chord2jointdecoder_theme'

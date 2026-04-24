@@ -51,13 +51,13 @@ def main():
     # set based on argparse
     if piece_or_theme == "piece":
         logs_filesname = f'chord2symmetricdecoder_train_log.log'
-        my_chords_csv_path = "train_chords_edited.csv"
+        my_chords_csv_path = "train_chords_edited-key-tranposed.csv"
         my_output_csv_path = "train_joint.csv"
         checkpoints_loc = f'chord2symmetricdecoder_train_checkpoints'
         checkpoints_file_stem = f'chord2symmetricdecoder'
     elif piece_or_theme == "theme":
         logs_filesname = f'chord2symmetricdecoder_theme_train_log.log'
-        my_chords_csv_path = "train_themes_held_out_chords_edited.csv"
+        my_chords_csv_path = "train_themes_held_out_chords_edited-key-tranposed.csv"
         my_output_csv_path = "train_joint_themes_held_out.csv"
         checkpoints_loc = f'chord2symmetricdecoder_theme_train_checkpoints'
         checkpoints_file_stem = f'chord2symmetricdecoder_theme'
@@ -171,10 +171,10 @@ def main():
             melody_tgt_key_padding_mask = (melody_input == melody_tokenizer.pad_token_id)
 
             bass_logits, melody_logits = model(
-                chord_input_ids,
-                chord_attention_mask,
-                bass_input,
-                melody_input,
+                chord_input_ids = chord_input_ids,
+                chord_attention_mask = chord_attention_mask,
+                bass_tgt = bass_input,
+                melody_tgt = melody_input,
                 bass_tgt_key_padding_mask=bass_tgt_key_padding_mask,
                 melody_tgt_key_padding_mask=melody_tgt_key_padding_mask,
             )

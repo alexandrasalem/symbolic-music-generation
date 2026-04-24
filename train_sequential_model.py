@@ -53,13 +53,13 @@ def main():
     # set based on argparse
     if piece_or_theme == "piece":
         logs_filesname = f'chord2sequential{bass_or_melody}_first_train_log.log'
-        my_chords_csv_path = "train_chords_edited.csv"
+        my_chords_csv_path = "train_chords_edited-key-tranposed.csv"
         my_output_csv_path = "train_joint.csv"
         checkpoints_loc = f'chord2sequential{bass_or_melody}_first_train_checkpoints'
         checkpoints_file_stem = f'chord2sequential{bass_or_melody}_first'
     elif piece_or_theme == "theme":
         logs_filesname = f'chord2sequential{bass_or_melody}_first_theme_train_log.log'
-        my_chords_csv_path = "train_themes_held_out_chords_edited.csv"
+        my_chords_csv_path = "train_themes_held_out_chords_edited-key-tranposed.csv"
         my_output_csv_path = "train_joint_themes_held_out.csv"
         checkpoints_loc = f'chord2sequential{bass_or_melody}_first_theme_train_checkpoints'
         checkpoints_file_stem = f'chord2sequential{bass_or_melody}_first_theme'

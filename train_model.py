@@ -3,14 +3,12 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 from miditok import REMI, TokenizerConfig
-from miditok.pytorch_data import DatasetMIDI, DataCollator
 from torch.utils.data import DataLoader
 from models import RemiDecoder, ChordEncoder, Chord2MidiTransformer
 from tqdm import tqdm
 from torch.optim.lr_scheduler import LambdaLR
 import logging
 import os
-#from tqdm.auto import tqdm
 import pandas as pd
 from chord_to_midi_dataset import ChordBassMelodyDataset, ChordMidiDataset
 from tokenizers import Tokenizer
@@ -55,13 +53,13 @@ def main():
     # set based on argparse
     if piece_or_theme == "piece":
         logs_filesname = f'chord2{bass_or_melody}_train_log.log'
-        my_chords_csv_path = "train_chords_edited.csv"
+        my_chords_csv_path = "train_chords_edited-key-tranposed.csv"
         my_output_csv_path = "train_joint.csv"
         checkpoints_loc = f'chord2{bass_or_melody}_train_checkpoints'
         checkpoints_file_stem = f'chord2{bass_or_melody}'
     elif piece_or_theme == "theme":
         logs_filesname = f'chord2{bass_or_melody}_theme_train_log.log'
-        my_chords_csv_path = "train_themes_held_out_chords_edited.csv"
+        my_chords_csv_path = "train_themes_held_out_chords_edited-key-tranposed.csv"
         my_output_csv_path = "train_joint_themes_held_out.csv"
         checkpoints_loc = f'chord2{bass_or_melody}_theme_train_checkpoints'
         checkpoints_file_stem = f'chord2{bass_or_melody}_theme'
