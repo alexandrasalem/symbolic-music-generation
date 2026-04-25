@@ -77,7 +77,7 @@ class ChordBassMelodyDataset(Dataset):
         row = self.df.iloc[idx]
 
         # Chord
-        chord_tokenized = self.chord_tokenizer.encode(row['chord'])
+        chord_tokenized = self.chord_tokenizer.encode(row['chord_transposed'])
         chord_input_ids, chord_attn_mask = chord_tokenized.ids, chord_tokenized.attention_mask
         chord_pad_token = self.chord_tokenizer.token_to_id('[PAD]')
         if len(chord_input_ids) < self.chord_max_length:
