@@ -170,9 +170,10 @@ def main():
             bass_tgt_key_padding_mask = (bass_input == bass_tokenizer.pad_token_id)
             melody_tgt_key_padding_mask = (melody_input == melody_tokenizer.pad_token_id)
 
+            bool_chord_attention_mask = (chord_attention_mask==0)
             bass_logits, melody_logits = model(
                 chord_input_ids = chord_input_ids,
-                chord_attention_mask = chord_attention_mask,
+                chord_attention_mask = bool_chord_attention_mask,
                 bass_tgt = bass_input,
                 melody_tgt = melody_input,
                 bass_tgt_key_padding_mask=bass_tgt_key_padding_mask,

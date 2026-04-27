@@ -221,7 +221,7 @@ class SymmetricRemiLayer(nn.Module):
                                key_padding_mask=self_padding_mask)[0]
         x = self.norm_s(x)
         # 2. chord
-        x = x + self.cross_chord(x, chord_mem, chord_mem)[0]
+        x = x + self.cross_chord(x, chord_mem, chord_mem, key_padding_mask=chord_mask)[0]
         x = self.norm_c(x)
         # 3. sibling voice
         x = x + self.cross_voice(x, other_voice, other_voice, attn_mask=self_attn_causal_mask)[0]
