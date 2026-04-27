@@ -221,10 +221,10 @@ class SymmetricRemiLayer(nn.Module):
                                key_padding_mask=self_padding_mask)[0]
         x = self.norm_s(x)
         # 2. chord
-        x = x + self.cross_chord(x, chord_mem, chord_mem)[0]
+        x = x + self.cross_chord(x, chord_mem, chord_mem, key_padding_mask=self_padding_mask)[0]
         x = self.norm_c(x)
         # 3. sibling voice  (NO mask -> full attention)
-        x = x + self.cross_voice(x, other_voice, other_voice)[0]
+        x = x + self.cross_voice(x, other_voice, other_voice, attn_mask=self_attn_causal_mask)[0]
         x = self.norm_v(x)
         # 4. ffn
         return self.norm_f(x + self.ffn(x))
@@ -278,16 +278,19 @@ class SymmetricRemiDecoder(nn.Module):
         # layer-wise locked forward
         for bass_layer, melody_layer in zip(self.bass_layers, self.melody_layers):
             temp_bass_x = bass_x
-            bass_x   = bass_layer(x = bass_x,
+            temp_melody_x = melody_x
+            new_bass   = bass_layer(x = temp_bass_x,
                                   chord_mem = chord_memory,
-                                  other_voice = melody_x,
+                                  other_voice = temp_melody_x,
                                   self_attn_causal_mask=bass_tgt_mask,
                                   self_padding_mask=bass_tgt_key_padding_mask)
-            melody_x = melody_layer(x=melody_x,
+            new_melody = melody_layer(x=temp_melody_x,
                                     chord_mem=chord_memory,
                                     other_voice=temp_bass_x,
                                     self_attn_causal_mask=melody_tgt_mask,
                                     self_padding_mask=melody_tgt_key_padding_mask)
+            bass_x = new_bass
+            melody_x = new_melody
 
         logits_bass   = self.bass_head(bass_x)
         logits_melody = self.melody_head(melody_x)
@@ -328,10 +331,17 @@ class SymmetricRemiDecoder(nn.Module):
         cum = torch.cumsum(sorted_probs, dim=-1)
         mask = cum <= p
         mask[0] = True
-        filtered = sorted_probs[mask]
-        filtered /= filtered.sum()
-        choice = torch.multinomial(filtered, 1)
-        return sorted_idx[mask][choice].item()
+        filtered_idx = sorted_idx[mask]
+        filtered_probs = sorted_probs[mask]
+
+        filtered_probs /= filtered_probs.sum()
+        choice = torch.multinomial(filtered_probs, 1)
+
+        return filtered_idx[choice].item()
+        # filtered = sorted_probs[mask]
+        # filtered /= filtered.sum()
+        # choice = torch.multinomial(filtered, 1)
+        # return sorted_idx[mask][choice].item()
 
 class SequentialRemiDecoder(nn.Module):
     def __init__(self, vocab_size, d_model=128, nhead=4, num_layers=3, dropout=0.2):
