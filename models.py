@@ -214,16 +214,16 @@ class SymmetricRemiLayer(nn.Module):
         )
         self.norm_f = nn.LayerNorm(d_model)
 
-    def forward(self, x, chord_mem, other_voice,
+    def forward(self, x, chord_mem, chord_mask,other_voice,
                 self_attn_causal_mask=None, self_padding_mask=None):
         # 1. self
         x = x + self.self_attn(x, x, x, attn_mask=self_attn_causal_mask,
                                key_padding_mask=self_padding_mask)[0]
         x = self.norm_s(x)
         # 2. chord
-        x = x + self.cross_chord(x, chord_mem, chord_mem, key_padding_mask=self_padding_mask)[0]
+        x = x + self.cross_chord(x, chord_mem, chord_mem, key_padding_mask=chord_mask)[0]
         x = self.norm_c(x)
-        # 3. sibling voice  (NO mask -> full attention)
+        # 3. sibling voice
         x = x + self.cross_voice(x, other_voice, other_voice, attn_mask=self_attn_causal_mask)[0]
         x = self.norm_v(x)
         # 4. ffn
@@ -259,6 +259,7 @@ class SymmetricRemiDecoder(nn.Module):
 
     def forward(self, bass_ids, melody_ids,
                 chord_memory,
+                chord_attention_mask=None,
                 bass_tgt_key_padding_mask=None, melody_tgt_key_padding_mask=None):
         """
         bass_ids / melody_ids : [B, T]  (already shifted right)
@@ -281,11 +282,13 @@ class SymmetricRemiDecoder(nn.Module):
             temp_melody_x = melody_x
             new_bass   = bass_layer(x = temp_bass_x,
                                   chord_mem = chord_memory,
+                                  chord_mask = chord_attention_mask,
                                   other_voice = temp_melody_x,
                                   self_attn_causal_mask=bass_tgt_mask,
                                   self_padding_mask=bass_tgt_key_padding_mask)
             new_melody = melody_layer(x=temp_melody_x,
                                     chord_mem=chord_memory,
+                                    chord_mask=chord_attention_mask,
                                     other_voice=temp_bass_x,
                                     self_attn_causal_mask=melody_tgt_mask,
                                     self_padding_mask=melody_tgt_key_padding_mask)
@@ -729,6 +732,7 @@ class Chord2SymmetricMidiTransformer(nn.Module):
             bass_ids = bass_tgt,
             melody_ids = melody_tgt,
             chord_memory = memory,
+            chord_attention_mask = chord_attention_mask,
             bass_tgt_key_padding_mask=bass_tgt_key_padding_mask,
             melody_tgt_key_padding_mask=melody_tgt_key_padding_mask)
         return logits_bass, logits_melody
