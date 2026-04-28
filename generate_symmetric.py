@@ -1,5 +1,5 @@
 from miditok import REMI, TokenizerConfig
-from models import RemiDecoder, SequentialRemiDecoder, ChordEncoder, Chord2SequentialMidiTransformer
+from models import SymmetricRemiDecoder, ChordEncoder, Chord2SymmetricMidiTransformer
 import torch
 import os
 from utils import convert_to_midi_files
@@ -10,12 +10,10 @@ import argparse
 
 parser = argparse.ArgumentParser(description="Arguments for controlling generation.")
 parser.add_argument("--piece_or_theme", choices=["piece", "theme"], help="which train/test split")
-parser.add_argument("--bass_or_melody", choices=["bass", "melody"], help="which voice to run")
 parser.add_argument("--epoch", type=int, choices=[0, 50, 100, 150, 200, 250, 300, 350, 400], help="which epoch checkpoint")
 args = parser.parse_args()
 
 piece_or_theme = args.piece_or_theme
-bass_or_melody = args.bass_or_melody
 epoch = args.epoch
 
 def extract_prefix(filename):
@@ -47,13 +45,13 @@ def construct_test_df(
 def main():
     # set based on argparse
     if piece_or_theme == "piece":
-        checkpoint_loc = f"checkpoints/chord2sequential{bass_or_melody}_first_train_checkpoints/chord2sequential{bass_or_melody}_first_epoch_{epoch}.pt"
-        samples_loc_stem = f"samples/chord2sequential{bass_or_melody}_first_samples"
+        checkpoint_loc = f"checkpoints/chord2symmetricdecoder_train_checkpoints/chord2symmetricdecoder_epoch_{epoch}.pt"
+        samples_loc_stem = "samples/chord2symmetricdecoder_samples"
         my_chords_csv_path = "test_chords_edited-key-tranposed.csv"
         my_output_csv_path = "test_joint.csv"
     elif piece_or_theme == "theme":
-        checkpoint_loc = f"checkpoints/chord2sequential{bass_or_melody}_first_theme_train_checkpoints/chord2sequential{bass_or_melody}_first_theme_epoch_{epoch}.pt"
-        samples_loc_stem = f"samples/chord2sequential{bass_or_melody}_first_theme_samples"
+        checkpoint_loc = f"checkpoints/chord2symmetricdecoder_theme_train_checkpoints/chord2symmetricdecoder_theme_epoch_{epoch}.pt"
+        samples_loc_stem = "samples/chord2symmetricdecoder_theme_samples"
         my_chords_csv_path = "test_themes_held_out_chords_edited-key-tranposed.csv"
         my_output_csv_path = "test_joint_themes_held_out.csv"
     else:
@@ -71,42 +69,29 @@ def main():
     "use_programs": False,
     "num_tempos": 32,  # number of tempo bins
     "tempo_range": (40, 250),  # (min, max)
-    #"default_note_duration":0.25,
     }
     config = TokenizerConfig(**TOKENIZER_PARAMS)
-    midi_tokenizer = REMI(config)
-    bass_tokenizer = midi_tokenizer
-    melody_tokenizer = midi_tokenizer
+    bass_tokenizer = REMI(config)
+    melody_tokenizer = REMI(config)
     chord_tokenizer = Tokenizer.from_file("chord_tokenizer.json")
 
     bos_id = 1
     eos_id = 2
 
-    chord_encoder = ChordEncoder(
-        vocab_size=chord_tokenizer.get_vocab_size(),
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    encoder = ChordEncoder(
+        chord_tokenizer.get_vocab_size(),
         d_model=256,
-        num_layers=2,
-        nhead=4
-    )
-    first_decoder = RemiDecoder(
-        vocab_size=len(midi_tokenizer.vocab),
-        d_model=256,
-        num_layers=2,
-        nhead=4
-    )
-    second_decoder = SequentialRemiDecoder(
-        vocab_size=len(midi_tokenizer.vocab),
-        d_model=256,
-        num_layers=4,
-        nhead=8
+        num_layers=1,
+        nhead=2
     )
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = Chord2SequentialMidiTransformer(chord_encoder, first_decoder, second_decoder)
-    model.to(device)
+    sym_decoder = SymmetricRemiDecoder(vocab_size=len(bass_tokenizer.vocab), d_model=256, nhead=8, num_layers=6)
+
+    model = Chord2SymmetricMidiTransformer(encoder, sym_decoder)
 
     max_length = 128
-    checkpoint = torch.load(checkpoint_loc, map_location=device)
+    checkpoint = torch.load(checkpoint_loc, map_location=device)#torch.load(f"chord2jointdecoder_train_checkpoints/chord2jointdecoder_epoch_{epoch_to_load}.pt", map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     model.to(device)
@@ -147,33 +132,18 @@ def main():
         input_ids = input_ids.unsqueeze(0)
         attn_mask = attn_mask.unsqueeze(0)
 
+
         # generate samples
-        if bass_or_melody == "bass":
-            bass_generated_ids, melody_generated_ids = model.generate(
-                chord_input_ids=input_ids,
-                chord_attention_mask=attn_mask,
-                first_bos_id=bos_id,
-                first_eos_id=eos_id,
-                second_bos_id=bos_id,
-                second_eos_id=eos_id,
-                max_len=max_length,
-                decoding_strategy="top_p",
-                top_p=0.9,
-                device=device
-            )
-        else:
-            melody_generated_ids, bass_generated_ids = model.generate(
-                chord_input_ids=input_ids,
-                chord_attention_mask=attn_mask,
-                first_bos_id=bos_id,
-                first_eos_id=eos_id,
-                second_bos_id=bos_id,
-                second_eos_id=eos_id,
-                max_len=max_length,
-                decoding_strategy="top_p",
-                top_p=0.9,
-                device=device
-            )
+        bass_generated_ids, melody_generated_ids = model.generate(
+            chord_input_ids=input_ids,
+            chord_attention_mask=attn_mask,
+            bos_id=bos_id,
+            eos_id=eos_id,
+            max_len=max_length,
+            decoding_strategy="top_p",
+            top_p=0.9,
+            device=device
+        )
         name = row['long_name']
 
         path = f"{samples_loc_stem}/generated_midis_{epoch}/bass/{name}_generated.mid"

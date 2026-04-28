@@ -6,6 +6,17 @@ from utils import convert_to_midi_files
 from tokenizers import Tokenizer
 import pandas as pd
 from pathlib import Path
+import argparse
+
+parser = argparse.ArgumentParser(description="Arguments for controlling generation.")
+parser.add_argument("--piece_or_theme", choices=["piece", "theme"], help="which train/test split")
+parser.add_argument("--bass_or_melody", choices=["bass", "melody"], help="which voice to run")
+parser.add_argument("--epoch", type=int, choices=[0, 50, 100, 150, 200, 250, 300, 350, 400], help="which epoch checkpoint")
+args = parser.parse_args()
+
+piece_or_theme = args.piece_or_theme
+bass_or_melody = args.bass_or_melody
+epoch = args.epoch
 
 def extract_prefix(filename):
     # Remove extension and everything after '_simplified'
@@ -34,6 +45,20 @@ def construct_test_df(
     return df
 
 def main():
+    # set based on argparse
+    if piece_or_theme == "piece":
+        checkpoint_loc = f"checkpoints/chord2{bass_or_melody}_train_checkpoints/chord2{bass_or_melody}_epoch_{epoch}.pt"
+        samples_loc_stem = f"samples/chord2{bass_or_melody}_samples"
+        my_chords_csv_path = "test_chords_edited-key-tranposed.csv"
+        my_output_csv_path = "test_joint.csv"
+    elif piece_or_theme == "theme":
+        checkpoint_loc = f"checkpoints/chord2{bass_or_melody}_theme_train_checkpoints/chord2{bass_or_melody}_theme_epoch_{epoch}.pt"
+        samples_loc_stem = f"samples/chord2{bass_or_melody}_theme_samples"
+        my_chords_csv_path = "test_themes_held_out_chords_edited-key-tranposed.csv"
+        my_output_csv_path = "test_joint_themes_held_out.csv"
+    else:
+        raise ValueError(f"Unknown piece or theme type: {piece_or_theme}")
+
     TOKENIZER_PARAMS = {
     "pitch_range": (21, 109),
     "beat_res": {(0, 4): 8, (4, 12): 4},
@@ -71,31 +96,29 @@ def main():
     model = Chord2MidiTransformer(encoder, decoder)
 
     max_length = 128
-    checkpoint = torch.load(f"chord2{bass_or_melody}_train_checkpoints/chord2{bass_or_melody}_epoch_{epoch_to_load}.pt", map_location=device)
+    checkpoint = torch.load(checkpoint_loc, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     model.to(device)
 
     print("Model loaded from checkpoint!")
 
-    #test_data = pd.read_csv(test_data_loc)
     test_data = construct_test_df(
-        chords_csv_path="test_chords_edited.csv",
+        chords_csv_path=my_chords_csv_path,
         bass_folder="new_simplified_bass_files_c_midi",
         melody_folder="new_simplified_melody_files_c_midi",
-        output_csv_path="test_joint.csv"
+        output_csv_path=my_output_csv_path
     )
     print("Test data (chord progressions) loaded!")
 
-    #os.makedirs(f"token_distribution/epoch_{epoch_to_load}", exist_ok=True)
-    os.makedirs(f"chord2{bass_or_melody}_samples", exist_ok=True)
-    os.makedirs(f"chord2{bass_or_melody}_samples/generated_midis_{epoch_to_load}", exist_ok=True)
+    os.makedirs(f"{samples_loc_stem}", exist_ok=True)
+    os.makedirs(f"{samples_loc_stem}/generated_midis_{epoch}", exist_ok=True)
 
     print("START GENERATING..")
     for idx, row in test_data.iterrows():
         # print(idx)
         tokenized = chord_tokenizer.encode(
-            row['chord'],
+            row['chord_transposed'],
         )
         input_ids, attn_mask = tokenized.ids, tokenized.attention_mask
 
@@ -125,7 +148,7 @@ def main():
             device=device
         )
         name = row['long_name']
-        path = f"chord2{bass_or_melody}_samples/generated_midis_{epoch_to_load}/{name}_generated.mid"
+        path = f"{samples_loc_stem}/generated_midis_{epoch}/{name}_generated.mid"
         convert_to_midi_files(
             generated_ids,
             midi_tokenizer,
@@ -135,9 +158,4 @@ def main():
 
 
 if __name__ == "__main__":
-    test_data_loc = "test_chords_edited.csv"
-    epoch_to_load = 400
-    bass_or_melody = "melody"
     main()
-    #bass_or_melody = "melody"
-    #main()
