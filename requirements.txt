@@ -5,3 +5,5 @@ mir_eval
 pandas
 tokenizers
 tqdm
+statsmodels
+pingouin

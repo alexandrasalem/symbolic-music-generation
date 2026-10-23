@@ -196,7 +196,7 @@ def unique_pitches_per_piece(midi_file):
     pitch_set = set()
     for element in flat_notes:
         if isinstance(element, note.Note):
-            pitch_set.add(str(element.fullName))
+            pitch_set.add(str(element.nameWithOctave))
     number_pitches = len(pitch_set)
     return number_pitches
 
@@ -552,7 +552,7 @@ def process_notes(test_csv_location, midis_locations, file_suffix, nothing_prior
                         'Note Count': average_note_count,
                         'Pitch Interval': average_pi,
                         'Avg IOI': average_ioi,
-                        'CT Ratio': average_ctrps,
+                        'CT Ratio': average_ctrs,
                         # 'ctr': average_ctrs,
                         # 'length_diff':average_length_diffs,
                         },
@@ -899,6 +899,7 @@ def main():
 
 if __name__ == "__main__":
     #midi_file = converter.parse('samples/chord2bass_samples/generated_midis_400/B075_00_02_b_generated.mid')
+    #print(unique_pitches_per_piece(midi_file))
     #inter_onset_interval(midi_file)
     os.makedirs('result_analyses', exist_ok=True)
     add_to_chord_to_note_dict()
